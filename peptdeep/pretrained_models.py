@@ -540,6 +540,8 @@ class ModelManager(object):
 
             if self._train_psm_logging:
                 logging.info(f"{len(tr_df)} PSMs for RT model training/transfer learning")
+                with open(global_settings['model_mgr']["log_file"], "a") as f:
+                    f.write(f"{len(tr_df)} PSMs for RT model training/transfer learning\n")
             if len(tr_df) > 0:
                 self.rt_model.train(tr_df, 
                     batch_size=self.batch_size_to_train_rt_ccs,
@@ -583,7 +585,7 @@ class ModelManager(object):
             else:
                 tr_df = psm_df
             if self._train_psm_logging:
-                logging.info(f"{len(tr_df)} PSMs for CCS model training/transfer learning")
+                logging.info(f"{len(tr_df)} PSMs for CCS model training/transfer learning\n")
             if len(tr_df) > 0:
                 self.ccs_model.train(tr_df, 
                     batch_size=self.batch_size_to_train_rt_ccs,
@@ -652,6 +654,8 @@ class ModelManager(object):
                     self.set_default_nce_instrument(tr_df)
                 if self._train_psm_logging:
                     logging.info(f"{len(tr_df)} PSMs for MS2 model training/transfer learning")
+                    with open(global_settings['model_mgr']["log_file"], "a") as f:
+                        f.write(f"{len(tr_df)} PSMs for MS2 model training/transfer learning\n")
                 self.ms2_model.train(tr_df, 
                     fragment_intensity_df=tr_inten_df,
                     batch_size=self.batch_size_to_train_ms2,

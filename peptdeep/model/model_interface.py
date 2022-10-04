@@ -149,9 +149,10 @@ class ModelInterface(object):
                 **kwargs
             )
             lr_scheduler.step()
-            if verbose: print(
-                f'[Training] Epoch={epoch+1}, lr={lr_scheduler.get_last_lr()[0]}, loss={np.mean(batch_cost)}'
-            )
+            if verbose:
+                print(f'[Training] Epoch={epoch+1}, lr={lr_scheduler.get_last_lr()[0]}, loss={np.mean(batch_cost)}')
+                with open(global_settings['model_mgr']["log_file"], "a") as f:
+                    f.write(f'[Training] Epoch={epoch+1}, lr={lr_scheduler.get_last_lr()[0]}, loss={np.mean(batch_cost)}\n')
 
         torch.cuda.empty_cache()
 

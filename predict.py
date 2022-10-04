@@ -44,8 +44,8 @@ if __name__ == '__main__':
     import logging
 
     parser = argparse.ArgumentParser(description='Running base model')
-    parser.add_argument('peptdeep_folder', type=str, help='folder for peptdeep')
     parser.add_argument('spectraRTinput', type=str, help='peptdeep input spectraRT.csv from MSBooster')
+    parser.add_argument('--peptdeep_folder', type=str, help='folder for peptdeep', default = ".")
     parser.add_argument('--model_type', type=str, help='generic, phospho, hla, or digly', default = "phos")
     parser.add_argument('--external_ms2_model', type=str, help='path to external ms2 model', default = "")
     parser.add_argument('--external_rt_model', type=str, help='path to external rt model', default="")
