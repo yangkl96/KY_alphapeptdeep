@@ -36,12 +36,13 @@ def getPredictionEntry(row):
     pred_entry += "END IONS\n"
     return (pred_entry)
 
+from multiprocessing import freeze_support
 if __name__ == '__main__':
+    freeze_support()
     print("Loading packages")
     import argparse
     import sys
-    import datetime
-    import logging
+    from alphabase.yaml_utils import load_yaml
 
     parser = argparse.ArgumentParser(description='Running base model')
     parser.add_argument('spectraRTinput', type=str, help='peptdeep input spectraRT.csv from MSBooster')
@@ -70,14 +71,11 @@ if __name__ == '__main__':
     with open("peptdeep/constants/settings_type.txt", "w") as f:
         f.write(settings_type)
     from peptdeep.settings import global_settings
+    #_base_dir = os.path.dirname(__file__)
+    #global_settings = load_yaml(
+    #    os.path.join(_base_dir, "peptdeep/constants/" + settings_type + '_settings.yaml')
+    #)
     from peptdeep.pretrained_models import ModelManager
-
-    old_stdout = sys.stdout
-    log_file = open(
-        os.path.dirname(spectraRTinput) + "/alphapeptdeep_predict" + str(datetime.datetime.now()).replace(" ",
-                                                                                                          "_").replace(
-            ":", "_") + ".log", "w")
-    sys.stdout = log_file
 
     #from alphabase.yaml_utils import load_yaml
     #peptdeep.settings.global_settings = load_yaml(
@@ -95,6 +93,7 @@ if __name__ == '__main__':
         model_mgr_settings["external_ms2_model"] = external_ms2_model
     if external_rt_model != "":
         model_mgr_settings["external_rt_model"] = external_rt_model
+    print("Using " + model_mgr_settings["external_ms2_model"] + " as ms2 model")
 
     model_mgr_settings["model_type"] = model_type
     if model_mgr_settings["model_type"] == "phos" or not mask_mods:
@@ -147,6 +146,3 @@ if __name__ == '__main__':
     mgf_file_path = os.path.dirname(spectraRTinput) + "/spectraRT.mgf"
     with open(mgf_file_path, "w") as f:
         f.write(mgf)
-
-    sys.stdout = old_stdout
-    log_file.close()

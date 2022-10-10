@@ -18,7 +18,7 @@ from alphabase.constants.modification import (
 
 _base_dir = os.path.dirname(__file__)
 
-with open("peptdeep/constants/settings_type.txt") as f:
+with open(_base_dir + "/constants/settings_type.txt") as f:
     settings_type = f.readline().strip()
 
 global_settings = load_yaml(
