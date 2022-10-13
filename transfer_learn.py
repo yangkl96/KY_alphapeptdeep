@@ -15,7 +15,7 @@ if __name__ == '__main__':
 
     parser.add_argument('--psm_type', type = str, help='type of PSMs; default = maxquant', nargs='?', default="maxquant")
     parser.add_argument('--ms_file_type', type = str, help='type of ms file; default = raw', nargs='?', default="raw")
-    parser.add_argument('--min_score', type = int, help='minimum Andromeda score', nargs='?', default=100)
+    parser.add_argument('--min_score', type = int, help='minimum Andromeda score', nargs='?', default=150)
     parser.add_argument('--instrument', type = str, help='what mass spec; default = QE', nargs='?', default="Lumos")
     parser.add_argument('--model_type', type = str, help='generic, phos, hla, or digly; default = generic',
                         nargs='?', default="generic") #default
@@ -35,6 +35,7 @@ if __name__ == '__main__':
     parser.add_argument('--batch_size_ms2', help='batch size for ms2', default=512)
     parser.add_argument('--batch_size_rt', help='batch size for rt', default=512)
     parser.add_argument('--grid_search', action=argparse.BooleanOptionalAction, help='whether to grid search over parameters separated by commas', default=False)
+    parser.add_argument('--processing_only', action=argparse.BooleanOptionalAction, help='whether to just do preprocessing of files', default=False)
 
     args = parser.parse_args()
     peptdeep_folder = args.peptdeep_folder
@@ -95,27 +96,36 @@ if __name__ == '__main__':
 
     print("Reading in files")
     all_psm_files = []
-    for root, dirs, files in os.walk(psm_folder):
-        for file in files:
-            if file == "msms.txt":
-                if not skip_filtering:
-                    df = pd.read_csv(os.path.join(root, file), sep="\t")
+    psm_folders = psm_folder.split(",")
+    for psm_f in psm_folders:
+        print(psm_f)
+        for root, dirs, files in os.walk(psm_f):
+            for file in files:
+                if file == "msms.txt":
+                    if not skip_filtering:
+                        print(os.path.join(root, file))
+                        df = pd.read_csv(os.path.join(root, file), sep="\t")
 
-                    df = df[df["Score"] >= min_score]
-                    df = df[df["Fragmentation"].str.lower() == fragmentation.lower()]
-                    df.to_csv(os.path.join(root, "msms_filter.txt"), sep = "\t", index=False)
+                        df = df[df["Score"] >= min_score]
+                        df = df[df["Fragmentation"].str.lower() == fragmentation.lower()]
+                        df.to_csv(os.path.join(root, "msms_filter.txt"), sep = "\t", index=False)
 
-                all_psm_files.append(os.path.join(root, "msms_filter.txt"))
+                    all_psm_files.append(os.path.join(root, "msms_filter.txt"))
 
     print("done finding psm files")
+    if (args.processing_only):
+        print("processing done")
+        sys.exit(0)
     mgr_settings["transfer"]["psm_files"] = all_psm_files
     mgr_settings["transfer"]["psm_type"] = "maxquant"
 
     all_ms_files = []
-    for root, dirs, files in os.walk(ms_folder):
-        for file in files:
-            if file.endswith(".raw"):
-                all_ms_files.append(os.path.join(root, file))
+    ms_folders = ms_folder.split(",")
+    for ms_f in ms_folders:
+        for root, dirs, files in os.walk(ms_folder):
+            for file in files:
+                if file.endswith(".raw"):
+                    all_ms_files.append(os.path.join(root, file))
 
     print("done finding msms files")
     mgr_settings["transfer"]["ms_files"] = all_ms_files
