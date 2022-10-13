@@ -14,7 +14,7 @@ if __name__ == '__main__':
     parser.add_argument('fragmentation', type = str, help='fragmentation method')
 
     parser.add_argument('--psm_type', type = str, help='type of PSMs; default = maxquant', nargs='?', default="maxquant")
-    parser.add_argument('--ms_file_type', type = str, help='type of ms file; default = raw', nargs='?', default="raw")
+    parser.add_argument('--ms_file_type', type = str, help='type of ms file; default = thermo', nargs='?', default="thermo")
     parser.add_argument('--min_score', type = int, help='minimum Andromeda score', nargs='?', default=150)
     parser.add_argument('--instrument', type = str, help='what mass spec; default = QE', nargs='?', default="Lumos")
     parser.add_argument('--model_type', type = str, help='generic, phos, hla, or digly; default = generic',
@@ -129,7 +129,7 @@ if __name__ == '__main__':
 
     print("done finding msms files")
     mgr_settings["transfer"]["ms_files"] = all_ms_files
-    mgr_settings["transfer"]["ms_file_type"] = "thermo"
+    mgr_settings["transfer"]["ms_file_type"] = ms_file_type
 
     if not grid_search:
         mgr_settings["transfer"]["model_output_folder"] = output_folder
@@ -192,6 +192,6 @@ if __name__ == '__main__':
                                 with open(mgr_settings["log_file"], "a") as f:
                                     for key in mgr_settings["transfer"]:
                                         f.write(key + ": " + str(mgr_settings["transfer"][key]) + "\n")
-
+                                print(mgr_settings["log_file"])
                                 print("Transfer learning beep boop")
                                 transfer_learn()
