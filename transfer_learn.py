@@ -124,8 +124,12 @@ if __name__ == '__main__':
     for ms_f in ms_folders:
         for root, dirs, files in os.walk(ms_folder):
             for file in files:
-                if file.endswith(".raw"):
-                    all_ms_files.append(os.path.join(root, file))
+                if ms_file_type == "thermo":
+                    if file.endswith(".raw"):
+                        all_ms_files.append(os.path.join(root, file))
+                elif ms_file_type == "mgf":
+                    if file.endswith(".mgf"):
+                        all_ms_files.append(os.path.join(root, file))
 
     print("done finding msms files")
     mgr_settings["transfer"]["ms_files"] = all_ms_files
