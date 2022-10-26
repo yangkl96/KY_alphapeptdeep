@@ -137,13 +137,16 @@ def transfer_learn(settings_dict: dict = settings.global_settings, verbose=True)
                 len(mgr_settings['transfer']['ms_files']) > 0
         ):
             if 'psm_df' not in mgr_settings.keys():
+                print("first pass")
                 psm_df, frag_df = match_psms(settings_dict)
                 mgr_settings['psm_df'] = psm_df
                 mgr_settings['frag_df'] = frag_df
             else:
+                print("reloading psm and frag df")
                 psm_df = mgr_settings['psm_df']
                 frag_df = mgr_settings['frag_df']
         else:
+            print("something wrong")
             psm_df = import_psm_df(
                 mgr_settings['transfer']['psm_files'],
                 mgr_settings['transfer']['psm_type'],

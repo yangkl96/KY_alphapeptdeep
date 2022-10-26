@@ -199,3 +199,4 @@ if __name__ == '__main__':
                                 print(mgr_settings["log_file"])
                                 print("Transfer learning beep boop")
                                 transfer_learn()
+                                print(mgr_settings.keys())
