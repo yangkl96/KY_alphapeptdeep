@@ -34,6 +34,9 @@ if __name__ == '__main__':
     parser.add_argument('--epoch_rt', help='number of epochs to train rt', default=40)
     parser.add_argument('--batch_size_ms2', help='batch size for ms2', default=512)
     parser.add_argument('--batch_size_rt', help='batch size for rt', default=512)
+    parser.add_argument('--lr', help='learning rate for both', default=0.0001)
+    parser.add_argument('--epoch', help='number of epochs to train both', default=40)
+    parser.add_argument('--batch_size', help='batch size for both', default=512)
     parser.add_argument('--grid_search', action=argparse.BooleanOptionalAction, help='whether to grid search over parameters separated by commas', default=False)
     parser.add_argument('--processing_only', action=argparse.BooleanOptionalAction, help='whether to just do preprocessing of files', default=False)
 
@@ -122,7 +125,8 @@ if __name__ == '__main__':
     all_ms_files = []
     ms_folders = ms_folder.split(",")
     for ms_f in ms_folders:
-        for root, dirs, files in os.walk(ms_folder):
+        print(ms_f)
+        for root, dirs, files in os.walk(ms_f):
             for file in files:
                 if ms_file_type == "thermo":
                     if file.endswith(".raw"):
@@ -157,46 +161,36 @@ if __name__ == '__main__':
         print("Transfer learning beep boop")
         transfer_learn()
     else:
-        lr_ms2_list = lr_ms2.split(",")
-        epoch_ms2_list = epoch_ms2.split(",")
-        batch_size_ms2_list = batch_size_ms2.split(",")
-        lr_rt_list = lr_rt.split(",")
-        epoch_rt_list = epoch_rt.split(",")
-        batch_size_rt_list = batch_size_rt.split(",")
+        lr_list = args.lr.split(",")
+        epoch_list = args.epoch.split(",")
+        batch_size_list = args.batch_size.split(",")
 
-        for lr_ms2 in lr_ms2_list:
-            for epoch_ms2 in epoch_ms2_list:
-                for batch_size_ms2 in batch_size_ms2_list:
-                    for lr_rt in lr_rt_list:
-                        for epoch_rt in epoch_rt_list:
-                            for batch_size_rt in batch_size_rt_list:
-                                new_output_folder = output_folder + \
-                                                    "lr-ms" + str(lr_ms2) + \
-                                                    "epoch-ms" + str(epoch_ms2) + \
-                                                    "batch-ms" + str(batch_size_ms2) + \
-                                                    "lr-rt" + str(lr_rt) + \
-                                                    "epoch-rt" + str(epoch_rt) + \
-                                                    "batch-rt" + str(batch_size_rt)
-                                if not os.path.exists(new_output_folder):
-                                    os.makedirs(new_output_folder)
-                                mgr_settings["transfer"]["model_output_folder"] = new_output_folder
-                                mgr_settings["transfer"]["lr_ms2"] = float(lr_ms2)
-                                mgr_settings["transfer"]["epoch_ms2"] = int(epoch_ms2)
-                                mgr_settings["transfer"]["batch_size_ms2"] = int(batch_size_ms2)
-                                mgr_settings["transfer"]["lr_rt_ccs"] = float(lr_rt)
-                                mgr_settings["transfer"]["epoch_rt_ccs"] = int(epoch_rt)
-                                mgr_settings["transfer"]["batch_size_rt_ccs"] = int(batch_size_rt)
+        for lr in lr_list:
+            for epoch in epoch_list:
+                for batch_size in batch_size_list:
+                    new_output_folder = output_folder + \
+                                        "lr" + str(lr) + \
+                                        "epoch" + str(epoch) + \
+                                        "batch" + str(batch_size)
+                    if not os.path.exists(new_output_folder):
+                        os.makedirs(new_output_folder)
+                    mgr_settings["transfer"]["model_output_folder"] = new_output_folder
+                    mgr_settings["transfer"]["lr_ms2"] = float(lr)
+                    mgr_settings["transfer"]["epoch_ms2"] = int(epoch)
+                    mgr_settings["transfer"]["batch_size_ms2"] = int(batch_size)
+                    mgr_settings["transfer"]["lr_rt_ccs"] = float(lr)
+                    mgr_settings["transfer"]["epoch_rt_ccs"] = int(epoch)
+                    mgr_settings["transfer"]["batch_size_rt_ccs"] = int(batch_size)
 
-                                # write log file
-                                mgr_settings["log_file"] = new_output_folder + "/alphapeptdeep_tf" + str(datetime.datetime.now()).replace(" ",
-                                                                                                                                      "_").replace(
-                                    ":", "_") \
-                                                           + "_lr-ms" + str(lr_ms2).split(".")[1] + "_epoch-ms" + str(epoch_ms2) + "_lr-rt" \
-                                                           + str(lr_rt).split(".")[1] + "_epoch-rt" + str(epoch_rt) + ".log"
-                                with open(mgr_settings["log_file"], "a") as f:
-                                    for key in mgr_settings["transfer"]:
-                                        f.write(key + ": " + str(mgr_settings["transfer"][key]) + "\n")
-                                print(mgr_settings["log_file"])
-                                print("Transfer learning beep boop")
-                                transfer_learn()
-                                print(mgr_settings.keys())
+                    # write log file
+                    mgr_settings["log_file"] = new_output_folder + "/alphapeptdeep_tf" + str(datetime.datetime.now()).replace(" ",
+                                                                                                                          "_").replace(
+                        ":", "_") \
+                                               + "_lr-ms" + str(lr_ms2).split(".")[1] + "_epoch-ms" + str(epoch_ms2) + "_lr-rt" \
+                                               + str(lr_rt).split(".")[1] + "_epoch-rt" + str(epoch_rt) + ".log"
+                    with open(mgr_settings["log_file"], "a") as f:
+                        for key in mgr_settings["transfer"]:
+                            f.write(key + ": " + str(mgr_settings["transfer"][key]) + "\n")
+                    print(mgr_settings["log_file"])
+                    print("Transfer learning beep boop")
+                    transfer_learn()
