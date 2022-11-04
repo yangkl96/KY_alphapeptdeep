@@ -16,7 +16,7 @@ if __name__ == '__main__':
     parser.add_argument('--psm_type', type = str, help='type of PSMs; default = maxquant', nargs='?', default="maxquant")
     parser.add_argument('--ms_file_type', type = str, help='type of ms file; default = thermo', nargs='?', default="thermo")
     parser.add_argument('--min_score', type = int, help='minimum Andromeda score', nargs='?', default=150)
-    parser.add_argument('--instrument', type = str, help='what mass spec; default = QE', nargs='?', default="Lumos")
+    parser.add_argument('--instrument', type = str, help='what mass spec; default = Lumos', nargs='?', default="Lumos")
     parser.add_argument('--model_type', type = str, help='generic, phos, hla, or digly; default = generic',
                         nargs='?', default="generic") #default
     parser.add_argument('--external_ms2_model', type=str, help='path to external ms2 model', nargs='?', default = "")
@@ -111,9 +111,11 @@ if __name__ == '__main__':
 
                         df = df[df["Score"] >= min_score]
                         df = df[df["Fragmentation"].str.lower() == fragmentation.lower()]
-                        df.to_csv(os.path.join(root, "msms_filter.txt"), sep = "\t", index=False)
+                        df.to_csv(os.path.join(root, "msms_filter_" + fragmentation.lower() + ".txt"), sep = "\t", index=False)
 
-                    all_psm_files.append(os.path.join(root, "msms_filter.txt"))
+                    all_psm_files.append(os.path.join(root, "msms_filter_" + fragmentation.lower() + ".txt"))
+                    # using scan number, find entry in scanHeaderOnly.csv, and add NCE to a dict in mgr_settings['default_nce']
+                    # in pretrained_models, modify function to load info into df
 
     print("done finding psm files")
     if (args.processing_only):
