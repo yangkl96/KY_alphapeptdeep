@@ -153,9 +153,10 @@ if __name__ == '__main__':
         mgr_settings["transfer"]["batch_size_rt_ccs"] = int(batch_size_rt)
 
         #write log file
-        mgr_settings["log_file"] = output_folder + "/alphapeptdeep_tf" + str(datetime.datetime.now()).replace(" ", "_").replace(":", "_") \
-                                   + "_lr-ms" + str(lr_ms2).split(".")[1] + "_epoch-ms" + str(epoch_ms2) + "_lr-rt" \
-                                   + str(lr_rt).split(".")[1] + "_epoch-rt" + str(epoch_rt) + ".log"
+        mgr_settings["log_file"] = output_folder + "/alphapeptdeep_tf" + str(datetime.datetime.now()).\
+            replace(" ", "_").replace(":", "_") + \
+            "_lr-ms" + str(lr_ms2).split(".")[1] + "_epoch-ms" + str(epoch_ms2) + "_batch-ms" + str(batch_size_ms2) + \
+            "_lr-rt" + str(lr_rt).split(".")[1] + "_epoch-rt" + str(epoch_rt) + "_batch-rt" + str(batch_size_rt) + ".log"
         with open(mgr_settings["log_file"], "a") as f:
             for key in mgr_settings["transfer"]:
                 f.write(key + ": " + str(mgr_settings["transfer"][key]) + "\n")
@@ -185,11 +186,10 @@ if __name__ == '__main__':
                     mgr_settings["transfer"]["batch_size_rt_ccs"] = int(batch_size)
 
                     # write log file
-                    mgr_settings["log_file"] = new_output_folder + "/alphapeptdeep_tf" + str(datetime.datetime.now()).replace(" ",
-                                                                                                                          "_").replace(
-                        ":", "_") \
-                                               + "_lr-ms" + str(lr_ms2).split(".")[1] + "_epoch-ms" + str(epoch_ms2) + "_lr-rt" \
-                                               + str(lr_rt).split(".")[1] + "_epoch-rt" + str(epoch_rt) + ".log"
+                    mgr_settings["log_file"] = new_output_folder + "/alphapeptdeep_tf" \
+                                               + str(datetime.datetime.now()).replace(" ", "_").replace(":", "_") \
+                                               + "_lr" + str(lr).split(".")[1] + "_epoch" + str(epoch) \
+                                               + "_batch" + str(batch_size) + ".log"
                     with open(mgr_settings["log_file"], "a") as f:
                         for key in mgr_settings["transfer"]:
                             f.write(key + ": " + str(mgr_settings["transfer"][key]) + "\n")
