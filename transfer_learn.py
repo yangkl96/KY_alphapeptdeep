@@ -141,10 +141,10 @@ if __name__ == '__main__':
     mgr_settings["transfer"]["ms_files"] = all_ms_files
     mgr_settings["transfer"]["ms_file_type"] = ms_file_type
 
+    mgr_settings["transfer"]["model_output_folder"] = output_folder
+    if not os.path.exists(output_folder):
+        os.makedirs(output_folder)
     if not grid_search:
-        mgr_settings["transfer"]["model_output_folder"] = output_folder
-        if not os.path.exists(output_folder):
-            os.makedirs(output_folder)
         mgr_settings["transfer"]["lr_ms2"] = float(lr_ms2)
         mgr_settings["transfer"]["epoch_ms2"] = int(epoch_ms2)
         mgr_settings["transfer"]["batch_size_ms2"] = int(batch_size_ms2)
@@ -172,7 +172,7 @@ if __name__ == '__main__':
             for epoch in epoch_list:
                 for batch_size in batch_size_list:
                     new_output_folder = output_folder + \
-                                        "lr" + str(lr) + \
+                                        "/lr" + str(lr) + \
                                         "epoch" + str(epoch) + \
                                         "batch" + str(batch_size)
                     if not os.path.exists(new_output_folder):
