@@ -387,12 +387,11 @@ class ModelManager(object):
         Append 'nce' and 'instrument' columns into df 
         with self.nce and self.instrument
         """
-        if 'nce' not in df.columns and 'instrument' not in df.columns:
-            df['nce'] = self.nce
-            df['instrument'] = self.instrument
-        elif 'nce' not in df.columns:
-            df['nce'] = self.nce
-        elif 'instrument' not in df.columns:
+        def getNCE(x):
+            return self.nce[x["root"] + "_" + str(x["Scan number"])]
+        if 'nce' not in df.columns:
+            df['nce'] = df.apply(lambda x: getNCE(x))
+        if 'instrument' not in df.columns:
             df['instrument'] = self.instrument
 
     def set_default_nce(self, df):

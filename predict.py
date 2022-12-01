@@ -138,11 +138,12 @@ if __name__ == '__main__':
         fragment_ion_types[i] = fragment_name_replace[fragment_ion_types[i]]
 
     print("Writing mgf")
-    mgf_series = predict_dict["precursor_df"].apply(lambda x: getPredictionEntry(x), axis=1)
-    mgf = ""
-    for entry in mgf_series:
-        mgf += entry
-
-    mgf_file_path = os.path.dirname(spectraRTinput) + "/spectraRT.mgf"
+    mgf_file_path = os.path.dirname(spectraRTinput) + "/spectraRT_alphapeptdeep.mgf"
     with open(mgf_file_path, "w") as f:
-        f.write(mgf)
+        f.write("")
+
+    mgf_series = predict_dict["precursor_df"].apply(lambda x: getPredictionEntry(x), axis=1)
+    f = open(mgf_file_path, "a")
+    for entry in mgf_series:
+        f.write(entry)
+    f.close()

@@ -58,7 +58,7 @@ if __name__ == '__main__':
     mgr_settings = global_settings['model_mgr']
     mgr_settings["mask_modloss"] = mask_mods
     mgr_settings['transfer']['psm_type'] = 'maxqaunt'
-    mgr_settings["transfer"]["grid_nce_search"] = True
+    mgr_settings["transfer"]["grid_nce_search"] = False
     mgr_settings["model_type"] = args.model_type
     mgr_settings["external_ms2_model"] = args.external_ms2_model
     mgr_settings["grid_instrument"] = args.instrument
@@ -73,6 +73,18 @@ if __name__ == '__main__':
         mgr_settings["transfer"]['psm_num_per_mod_to_train_ms2'] = 0
 
     #dict of dict for NCE
+    NCE_dict = {}
+    def enterNCEdict(x, root):
+        scan_type_split = x["scan_type"].split("@")
+        nce = scan_type_split[len(scan_type_split) - 1]
+        i = 0
+        while True:
+            if nce[i].isnumeric():
+                continue
+            i += 1
+        nce = nce[i:]
+
+        NCE_dict[root + "_" + str(x["scan_number"])] = float(nce)
 
     print("Reading in files")
     all_psm_files = []
@@ -92,10 +104,10 @@ if __name__ == '__main__':
 
                         #read in scanHeaderOnly.csv for NCE information
                         df = pd.read_csv(os.path.join(root, "scanHeaderOnly.csv"))
+                        df.apply(lambda x: enterNCEdict(x, root), axis = 1)
 
                     all_psm_files.append(os.path.join(root, "msms_filter_" + args.fragmentation.lower() + ".txt"))
-                    # using scan number, find entry in scanHeaderOnly.csv, and add NCE to a dict in mgr_settings['default_nce']
-                    # in pretrained_models, modify function to load info into df
+    mgr_settings["default_nce"] = NCE_dict
 
     print("done finding psm files")
     if (args.processing_only):
