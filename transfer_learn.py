@@ -41,40 +41,15 @@ if __name__ == '__main__':
     parser.add_argument('--processing_only', action=argparse.BooleanOptionalAction, help='whether to just do preprocessing of files', default=False)
 
     args = parser.parse_args()
-    peptdeep_folder = args.peptdeep_folder
-    psm_folder = args.psm_folder
-    ms_folder = args.ms_folder
-    output_folder = args.output_folder
-    fragmentation = args.fragmentation
 
-    psm_type = args.psm_type
-    ms_file_type = args.ms_file_type
-    min_score = args.min_score
-    instrument = args.instrument
-    model_type = args.model_type
-    external_ms2_model = args.external_ms2_model
-    no_train_rt_ccs = args.no_train_rt_ccs
-    no_train_ms2 = args.no_train_ms2
-    alphapept_folder = args.alphapept_folder
-    settings_type = args.settings_type
-    skip_filtering = args.skip_filtering
-    mask_mods = args.mask_mods
-    lr_ms2 = args.lr_ms2
-    epoch_ms2 = args.epoch_ms2
-    lr_rt = args.lr_rt
-    epoch_rt = args.epoch_rt
-    batch_size_ms2 = args.batch_size_ms2
-    batch_size_rt = args.batch_size_rt
-    grid_search = args.grid_search
-
-    if model_type == "phos":
+    if args.model_type == "phos":
         mask_mods = False
 
-    sys.path.insert(1, peptdeep_folder)
-    sys.path.insert(2, alphapept_folder)
+    sys.path.insert(1, args.peptdeep_folder)
+    sys.path.insert(2, args.alphapept_folder)
 
     with open("peptdeep/constants/settings_type.txt", "w") as f:
-        f.write(settings_type)
+        f.write(args.settings_type)
     from peptdeep.pipeline_api import transfer_learn
     from peptdeep.settings import global_settings
     import datetime
@@ -84,36 +59,41 @@ if __name__ == '__main__':
     mgr_settings["mask_modloss"] = mask_mods
     mgr_settings['transfer']['psm_type'] = 'maxqaunt'
     mgr_settings["transfer"]["grid_nce_search"] = True
-    mgr_settings["model_type"] = model_type
-    mgr_settings["external_ms2_model"] = external_ms2_model
-    mgr_settings["grid_instrument"] = instrument
+    mgr_settings["model_type"] = args.model_type
+    mgr_settings["external_ms2_model"] = args.external_ms2_model
+    mgr_settings["grid_instrument"] = args.instrument
 
-    if no_train_rt_ccs:
+    if args.no_train_rt_ccs:
         mgr_settings["transfer"]['epoch_rt_ccs'] = 0
         mgr_settings["transfer"]['psm_num_to_train_rt_ccs'] = 0
         mgr_settings["transfer"]['psm_num_per_mod_to_train_rt_ccs'] = 0
-    if no_train_ms2:
+    if args.no_train_ms2:
         mgr_settings["transfer"]['epoch_ms2'] = 0
         mgr_settings["transfer"]['psm_num_to_train_ms2'] = 0
         mgr_settings["transfer"]['psm_num_per_mod_to_train_ms2'] = 0
 
+    #dict of dict for NCE
+
     print("Reading in files")
     all_psm_files = []
-    psm_folders = psm_folder.split(",")
+    psm_folders = args.psm_folder.split(",")
     for psm_f in psm_folders:
         print(psm_f)
         for root, dirs, files in os.walk(psm_f):
             for file in files:
                 if file == "msms.txt":
-                    if not skip_filtering:
+                    if not args.skip_filtering:
                         print(os.path.join(root, file))
                         df = pd.read_csv(os.path.join(root, file), sep="\t")
 
-                        df = df[df["Score"] >= min_score]
-                        df = df[df["Fragmentation"].str.lower() == fragmentation.lower()]
-                        df.to_csv(os.path.join(root, "msms_filter_" + fragmentation.lower() + ".txt"), sep = "\t", index=False)
+                        df = df[df["Score"] >= args.min_score]
+                        df = df[df["Fragmentation"].str.lower() == args.fragmentation.lower()]
+                        df.to_csv(os.path.join(root, "msms_filter_" + args.fragmentation.lower() + ".txt"), sep = "\t", index=False)
 
-                    all_psm_files.append(os.path.join(root, "msms_filter_" + fragmentation.lower() + ".txt"))
+                        #read in scanHeaderOnly.csv for NCE information
+                        df = pd.read_csv(os.path.join(root, "scanHeaderOnly.csv"))
+
+                    all_psm_files.append(os.path.join(root, "msms_filter_" + args.fragmentation.lower() + ".txt"))
                     # using scan number, find entry in scanHeaderOnly.csv, and add NCE to a dict in mgr_settings['default_nce']
                     # in pretrained_models, modify function to load info into df
 
@@ -125,38 +105,38 @@ if __name__ == '__main__':
     mgr_settings["transfer"]["psm_type"] = "maxquant"
 
     all_ms_files = []
-    ms_folders = ms_folder.split(",")
+    ms_folders = args.ms_folder.split(",")
     for ms_f in ms_folders:
         print(ms_f)
         for root, dirs, files in os.walk(ms_f):
             for file in files:
-                if ms_file_type == "thermo":
+                if args.ms_file_type == "thermo":
                     if file.endswith(".raw"):
                         all_ms_files.append(os.path.join(root, file))
-                elif ms_file_type == "mgf":
+                elif args.ms_file_type == "mgf":
                     if file.endswith(".mgf"):
                         all_ms_files.append(os.path.join(root, file))
 
     print("done finding msms files")
     mgr_settings["transfer"]["ms_files"] = all_ms_files
-    mgr_settings["transfer"]["ms_file_type"] = ms_file_type
+    mgr_settings["transfer"]["ms_file_type"] = args.ms_file_type
 
-    mgr_settings["transfer"]["model_output_folder"] = output_folder
-    if not os.path.exists(output_folder):
-        os.makedirs(output_folder)
-    if not grid_search:
-        mgr_settings["transfer"]["lr_ms2"] = float(lr_ms2)
-        mgr_settings["transfer"]["epoch_ms2"] = int(epoch_ms2)
-        mgr_settings["transfer"]["batch_size_ms2"] = int(batch_size_ms2)
-        mgr_settings["transfer"]["lr_rt_ccs"] = float(lr_rt)
-        mgr_settings["transfer"]["epoch_rt_ccs"] = int(epoch_rt)
-        mgr_settings["transfer"]["batch_size_rt_ccs"] = int(batch_size_rt)
+    mgr_settings["transfer"]["model_output_folder"] = args.output_folder
+    if not os.path.exists(args.output_folder):
+        os.makedirs(args.output_folder)
+    if not args.grid_search:
+        mgr_settings["transfer"]["lr_ms2"] = float(args.lr_ms2)
+        mgr_settings["transfer"]["epoch_ms2"] = int(args.epoch_ms2)
+        mgr_settings["transfer"]["batch_size_ms2"] = int(args.batch_size_ms2)
+        mgr_settings["transfer"]["lr_rt_ccs"] = float(args.lr_rt)
+        mgr_settings["transfer"]["epoch_rt_ccs"] = int(args.epoch_rt)
+        mgr_settings["transfer"]["batch_size_rt_ccs"] = int(args.batch_size_rt)
 
         #write log file
-        mgr_settings["log_file"] = output_folder + "/alphapeptdeep_tf" + str(datetime.datetime.now()).\
+        mgr_settings["log_file"] = args.output_folder + "/alphapeptdeep_tf" + str(datetime.datetime.now()).\
             replace(" ", "_").replace(":", "_") + \
-            "_lr-ms" + str(lr_ms2).split(".")[1] + "_epoch-ms" + str(epoch_ms2) + "_batch-ms" + str(batch_size_ms2) + \
-            "_lr-rt" + str(lr_rt).split(".")[1] + "_epoch-rt" + str(epoch_rt) + "_batch-rt" + str(batch_size_rt) + ".log"
+            "_lr-ms" + str(args.lr_ms2).split(".")[1] + "_epoch-ms" + str(args.epoch_ms2) + "_batch-ms" + str(args.batch_size_ms2) + \
+            "_lr-rt" + str(args.lr_rt).split(".")[1] + "_epoch-rt" + str(args.epoch_rt) + "_batch-rt" + str(args.batch_size_rt) + ".log"
         with open(mgr_settings["log_file"], "a") as f:
             for key in mgr_settings["transfer"]:
                 f.write(key + ": " + str(mgr_settings["transfer"][key]) + "\n")
@@ -171,7 +151,7 @@ if __name__ == '__main__':
         for lr in lr_list:
             for epoch in epoch_list:
                 for batch_size in batch_size_list:
-                    new_output_folder = output_folder + \
+                    new_output_folder = args.output_folder + \
                                         "/lr" + str(lr) + \
                                         "epoch" + str(epoch) + \
                                         "batch" + str(batch_size)

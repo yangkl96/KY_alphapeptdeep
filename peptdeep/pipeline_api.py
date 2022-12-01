@@ -66,7 +66,7 @@ def match_psms(settings_dict: dict = settings.global_settings):
     max_charge = settings_dict['model']['max_frag_charge']
     charged_frag_types = get_charged_frag_types(frag_types, max_charge)
 
-    psm_df = import_psm_df(
+    psm_df = import_psm_df( #option to split it, provide multiple psm_types
         mgr_settings['transfer']['psm_files'],
         mgr_settings['transfer']['psm_type'],
     )
