@@ -47,10 +47,6 @@ def import_psm_df(psm_files, psm_type):
     for psm_file in psm_files:
         if not os.path.isfile(psm_file): continue
         psm_reader.import_file(psm_file)
-
-        psm_file_split = psm_file.split("/")
-        psm_reader.psm_df["root"] = psm_file_split[len(psm_file_split) - 1]
-
         psm_df_list.append(psm_reader.psm_df)
     return pd.concat(psm_df_list).reset_index(drop=True)
 

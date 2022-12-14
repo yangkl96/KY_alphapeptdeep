@@ -388,11 +388,12 @@ class ModelManager(object):
         with self.nce and self.instrument
         """
         def getNCE(x):
-            return self.nce[x["root"] + "_" + str(x["Scan number"])]
+            return self.nce[x["raw_name"] + "_" + str(x["scan_num"])]
         if 'nce' not in df.columns:
-            df['nce'] = df.apply(lambda x: getNCE(x))
+            df['nce'] = df.apply(lambda x: getNCE(x), axis = 1)
         if 'instrument' not in df.columns:
             df['instrument'] = self.instrument
+        print(df)
 
     def set_default_nce(self, df):
         """Alias for `set_default_nce_instrument`"""
@@ -649,6 +650,7 @@ class ModelManager(object):
                     )
                     tr_df['nce'] = self.nce
                     tr_df['instrument'] = self.instrument
+                    print(tr_df.head())
                 else:
                     self.set_default_nce_instrument(tr_df)
                 if self._train_psm_logging:

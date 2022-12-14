@@ -5,6 +5,7 @@ if __name__ == '__main__':
     import pandas as pd
     import argparse
     import sys
+    import pyteomics
 
     parser = argparse.ArgumentParser(description='Training transfer model')
     parser.add_argument('peptdeep_folder', type = str, help='folder for peptdeep')
@@ -14,7 +15,7 @@ if __name__ == '__main__':
     parser.add_argument('fragmentation', type = str, help='fragmentation method')
 
     parser.add_argument('--psm_type', type = str, help='type of PSMs; default = maxquant', nargs='?', default="maxquant")
-    parser.add_argument('--ms_file_type', type = str, help='type of ms file; default = thermo', nargs='?', default="thermo")
+    parser.add_argument('--ms_file_type', type = str, help='type of ms file; default = mgf', nargs='?', default="mgf")
     parser.add_argument('--min_score', type = int, help='minimum Andromeda score', nargs='?', default=150)
     parser.add_argument('--instrument', type = str, help='what mass spec; default = Lumos', nargs='?', default="Lumos")
     parser.add_argument('--model_type', type = str, help='generic, phos, hla, or digly; default = generic',
@@ -43,7 +44,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     if args.model_type == "phos":
-        mask_mods = False
+        args.mask_mods = False
 
     sys.path.insert(1, args.peptdeep_folder)
     sys.path.insert(2, args.alphapept_folder)
@@ -53,10 +54,11 @@ if __name__ == '__main__':
     from peptdeep.pipeline_api import transfer_learn
     from peptdeep.settings import global_settings
     import datetime
+    from pyteomics import mzml
 
     #general settings
     mgr_settings = global_settings['model_mgr']
-    mgr_settings["mask_modloss"] = mask_mods
+    mgr_settings["mask_modloss"] = args.mask_mods
     mgr_settings['transfer']['psm_type'] = 'maxqaunt'
     mgr_settings["transfer"]["grid_nce_search"] = False
     mgr_settings["model_type"] = args.model_type
@@ -72,50 +74,8 @@ if __name__ == '__main__':
         mgr_settings["transfer"]['psm_num_to_train_ms2'] = 0
         mgr_settings["transfer"]['psm_num_per_mod_to_train_ms2'] = 0
 
-    #dict of dict for NCE
-    NCE_dict = {}
-    def enterNCEdict(x, root):
-        scan_type_split = x["scan_type"].split("@")
-        nce = scan_type_split[len(scan_type_split) - 1]
-        i = 0
-        while True:
-            if nce[i].isnumeric():
-                continue
-            i += 1
-        nce = nce[i:]
-
-        NCE_dict[root + "_" + str(x["scan_number"])] = float(nce)
-
     print("Reading in files")
-    all_psm_files = []
-    psm_folders = args.psm_folder.split(",")
-    for psm_f in psm_folders:
-        print(psm_f)
-        for root, dirs, files in os.walk(psm_f):
-            for file in files:
-                if file == "msms.txt":
-                    if not args.skip_filtering:
-                        print(os.path.join(root, file))
-                        df = pd.read_csv(os.path.join(root, file), sep="\t")
-
-                        df = df[df["Score"] >= args.min_score]
-                        df = df[df["Fragmentation"].str.lower() == args.fragmentation.lower()]
-                        df.to_csv(os.path.join(root, "msms_filter_" + args.fragmentation.lower() + ".txt"), sep = "\t", index=False)
-
-                        #read in scanHeaderOnly.csv for NCE information
-                        df = pd.read_csv(os.path.join(root, "scanHeaderOnly.csv"))
-                        df.apply(lambda x: enterNCEdict(x, root), axis = 1)
-
-                    all_psm_files.append(os.path.join(root, "msms_filter_" + args.fragmentation.lower() + ".txt"))
-    mgr_settings["default_nce"] = NCE_dict
-
-    print("done finding psm files")
-    if (args.processing_only):
-        print("processing done")
-        sys.exit(0)
-    mgr_settings["transfer"]["psm_files"] = all_psm_files
-    mgr_settings["transfer"]["psm_type"] = "maxquant"
-
+    rawToPath = {}
     all_ms_files = []
     ms_folders = args.ms_folder.split(",")
     for ms_f in ms_folders:
@@ -129,9 +89,79 @@ if __name__ == '__main__':
                     if file.endswith(".mgf"):
                         all_ms_files.append(os.path.join(root, file))
 
+                splitFile = file.split(".")
+                splitFile = ".".join(splitFile[0: len(splitFile) - 1])
+                rawToPath[splitFile] = root
+
     print("done finding msms files")
     mgr_settings["transfer"]["ms_files"] = all_ms_files
     mgr_settings["transfer"]["ms_file_type"] = args.ms_file_type
+
+    #dict of dict for NCE
+    NCE_dict = {}
+    def enterNCEdict(x, mzmlFileDict):
+        entry = mzmlFileDict[x["Scan number"]]
+        scan_type_split = entry["scanList"]["scan"][0]["filter string"].split("@")
+        nce = ""
+        for s in scan_type_split[1:]:
+            if args.fragmentation.lower() == "etd":
+                if "etd" in s:
+                    nce = s.split(" ")[0]
+            if args.fragmentation.lower() == "hcd" or args.fragmentation.lower() == "ethcd":
+                if "hcd" in s:
+                    nce = s.split(" ")[0]
+        for i in range(len(nce)):
+            if nce[i].isnumeric():
+                nce = nce[i:]
+                break
+
+        NCE_dict[x["Raw file"] + "_" + str(x["Scan number"])] = float(nce)
+
+    all_psm_files = []
+    psm_folders = args.psm_folder.split(",")
+    i = 0
+    for psm_f in psm_folders:
+        print(psm_f)
+        for root, dirs, files in os.walk(psm_f):
+            for file in files:
+                if file == "msms.txt":
+                    if not args.skip_filtering:
+                        print(str(i) + ", " + os.path.join(root, file))
+                        i += 1
+                        df = pd.read_csv(os.path.join(root, file), sep="\t")
+
+                        df = df[df["Score"] >= args.min_score]
+                        df = df[df["Fragmentation"].str.lower() == args.fragmentation.lower()]
+                        df.reset_index(drop = True, inplace = True)
+                        df.to_csv(os.path.join(root, "msms_filter_" + args.fragmentation.lower() + ".txt"), sep = "\t", index=False)
+
+                        #read in mzml for NCE information
+                        mzmlRoot = rawToPath[df["Raw file"][0]].replace("mgf", "mzml")
+                        try:
+                            mzmlFile = mzml.read(mzmlRoot + "/" + df["Raw file"][0] + ".mzML")
+                        except:
+                            print(mzmlRoot + "/" + df["Raw file"][0] + ".mzML does not exist")
+                            continue
+                        #try:
+                        mzmlFileDict = {}
+                        for entry in mzmlFile:
+                            mzmlFileDict[entry["index"] + 1] = entry
+                        #extract NCE info for each row using scan number minus 1 to get index
+                        df.apply(lambda x: enterNCEdict(x, mzmlFileDict), axis = 1)
+                        #except:
+                        #    print("issues with parsing " + mzmlRoot + "/" + df["Raw file"][0] + ".mzML")
+                        #    continue
+
+                    all_psm_files.append(os.path.join(root, "msms_filter_" + args.fragmentation.lower() + ".txt"))
+
+    mgr_settings["default_nce"] = NCE_dict
+
+    print("done finding psm files")
+    if (args.processing_only):
+        print("processing done")
+        sys.exit(0)
+    mgr_settings["transfer"]["psm_files"] = all_psm_files
+    mgr_settings["transfer"]["psm_type"] = "maxquant"
 
     mgr_settings["transfer"]["model_output_folder"] = args.output_folder
     if not os.path.exists(args.output_folder):
