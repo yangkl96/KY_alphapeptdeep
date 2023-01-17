@@ -43,33 +43,26 @@ if __name__ == '__main__':
     import argparse
     import sys
     from alphabase.yaml_utils import load_yaml
+    import time
 
     parser = argparse.ArgumentParser(description='Running base model')
     parser.add_argument('spectraRTinput', type=str, help='peptdeep input spectraRT.csv from MSBooster')
     parser.add_argument('--peptdeep_folder', type=str, help='folder for peptdeep', default = ".")
-    parser.add_argument('--model_type', type=str, help='generic, phospho, hla, or digly', default = "phos")
+    parser.add_argument('--model_type', type=str, help='generic, phospho, hla, or digly', default = "generic")
     parser.add_argument('--external_ms2_model', type=str, help='path to external ms2 model', default = "")
     parser.add_argument('--external_rt_model', type=str, help='path to external rt model', default="")
     #parser.add_argument('--frag_types', type=str, help='fragment ion types, separated by a comma and nothing else', default = "b,y,b_modloss,y_modloss")
-    parser.add_argument('--settings_type', type=str, help='settings.yaml to use', default="default")
-    parser.add_argument('--mask_mods', type=bool, help='whether to mask modloss fragments', default=True)
+    parser.add_argument('--settings_type', type=str, help='settings.yaml to use', default="hcd")
+    parser.add_argument('--mask_mods', type=bool, help='whether to mask modloss fragments', default=False)
 
     args = parser.parse_args()
-    peptdeep_folder = args.peptdeep_folder
-    spectraRTinput = args.spectraRTinput
-    model_type = args.model_type
-    external_ms2_model = args.external_ms2_model
-    external_rt_model = args.external_rt_model
-    #frag_types = args.frag_types
-    settings_type = args.settings_type
-    mask_mods = args.mask_mods
-    sys.path.insert(1, peptdeep_folder)
+    sys.path.insert(1, args.peptdeep_folder)
 
     import os
     import pandas as pd
     #write file that contains settings_type
     with open("peptdeep/constants/settings_type.txt", "w") as f:
-        f.write(settings_type)
+        f.write(args.settings_type)
     from peptdeep.settings import global_settings
     #_base_dir = os.path.dirname(__file__)
     #global_settings = load_yaml(
@@ -89,21 +82,22 @@ if __name__ == '__main__':
     model_mgr_settings = global_settings['model_mgr']
 
     model_mgr = ""
-    if external_ms2_model != "":
-        model_mgr_settings["external_ms2_model"] = external_ms2_model
-    if external_rt_model != "":
-        model_mgr_settings["external_rt_model"] = external_rt_model
+    if args.external_ms2_model != "":
+        model_mgr_settings["external_ms2_model"] = args.external_ms2_model
+    if args.external_rt_model != "":
+        model_mgr_settings["external_rt_model"] = args.external_rt_model
     print("Using " + model_mgr_settings["external_ms2_model"] + " as ms2 model")
 
-    model_mgr_settings["model_type"] = model_type
-    if model_mgr_settings["model_type"] == "phos" or not mask_mods:
+    model_mgr_settings["model_type"] = args.model_type
+    if model_mgr_settings["model_type"] == "phos" or not args.mask_mods:
         model_mgr = ModelManager(mask_modloss=False)
     else:
         model_mgr = ModelManager(mask_modloss=True)
 
     # predict
+    start = time.time()
     print("Loading peptides")
-    df = pd.read_csv(spectraRTinput)
+    df = pd.read_csv(args.spectraRTinput)
     df.fillna('', inplace=True)
     predict_dict = model_mgr.predict_all(df, predict_items=['rt', 'ms2'])
 
@@ -138,7 +132,11 @@ if __name__ == '__main__':
         fragment_ion_types[i] = fragment_name_replace[fragment_ion_types[i]]
 
     print("Writing mgf")
-    mgf_file_path = os.path.dirname(spectraRTinput) + "/spectraRT_alphapeptdeep.mgf"
+    output_dir = os.path.dirname(args.spectraRTinput)
+    if output_dir == "":
+        output_dir = "."
+
+    mgf_file_path = output_dir + "/spectraRT_alphapeptdeep.mgf"
     with open(mgf_file_path, "w") as f:
         f.write("")
 
@@ -147,3 +145,5 @@ if __name__ == '__main__':
     for entry in mgf_series:
         f.write(entry)
     f.close()
+    end = time.time()
+    print("prediction took " + str(end - start) + " sec")

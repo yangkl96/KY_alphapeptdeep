@@ -10,6 +10,7 @@ import os
 import numpy as np
 import pandas as pd
 from alphabase.io.hdf import HDF_File
+from pyteomics import mzml
 
 try:
     # should be replaced by AlphaRaw in the near future
@@ -241,6 +242,41 @@ class MGFReader(MSReaderBase):
         self.peak_df['mz'] = np.concatenate(masses_list)
         self.peak_df['intensity'] = np.concatenate(intens_list)
 
+class MZMLReader(MSReaderBase):
+    def load(self, mzmlF):
+        if isinstance(mzmlF, str):
+            f = mzml.read(mzmlF)
+        else:
+            f = mzmlF
+        scanset = set()
+        masses_list = []
+        intens_list = []
+        scan_list = []
+        rt_list = []
+        for entry in f:
+            if entry["ms level"] != 2:
+                continue
+            scan = int(entry["id"].split("scan=")[1])
+
+            if scan in scanset:
+                continue
+            scanset.add(scan)
+            scan_list.append(scan)
+            masses_list.append(entry["m/z array"])
+            intens_list.append(entry["intensity array"])
+            rt_list.append(entry["scanList"]["scan"][0]["scan start time"])
+
+        if isinstance(mzmlF, str):
+            f.close()
+
+        self.build_spectrum_df(
+            scan_list,
+            index_ragged_list(masses_list),
+            rt_list
+        )
+        self.peak_df['mz'] = np.concatenate(masses_list)
+        self.peak_df['intensity'] = np.concatenate(intens_list)
+
 class MSReaderProvider:
     """Factory class to register and get MS Readers"""
     def __init__(self):
@@ -256,6 +292,7 @@ ms2_reader_provider = MSReaderProvider()
 ms2_reader_provider.register_reader('mgf', MGFReader)
 ms2_reader_provider.register_reader('alphapept', AlphaPept_HDF_MS2_Reader)
 ms2_reader_provider.register_reader('alphapept_hdf', AlphaPept_HDF_MS2_Reader)
+ms2_reader_provider.register_reader('mzml', MZMLReader)
 
 ms1_reader_provider = MSReaderProvider()
 ms1_reader_provider.register_reader('alphapept', AlphaPept_HDF_MS1_Reader)

@@ -152,21 +152,27 @@ def transfer_learn(settings_dict: dict = settings.global_settings, verbose=True)
             frag_df = None
 
         logging.info("Training CCS model ...")
-        model_mgr.train_ccs_model(psm_df)
+        ccs_state_dict = model_mgr.train_ccs_model(psm_df)
         logging.info("Finished training CCS model")
+        if ccs_state_dict is not None:
+            model_mgr.ccs_model.model.load_state_dict(ccs_state_dict)
+            model_mgr.ccs_model.save(os.path.join(output_folder, 'ccs.pth'))
 
         logging.info("Training RT model ...")
-        model_mgr.train_rt_model(psm_df)
+        rt_state_dict = model_mgr.train_rt_model(psm_df)
         logging.info("Finished training RT model")
+        if rt_state_dict is not None:
+            model_mgr.rt_model.model.load_state_dict(rt_state_dict)
+            model_mgr.rt_model.save(os.path.join(output_folder, 'rt.pth'))
 
         if frag_df is not None and len(frag_df) > 0:
             logging.info("Training MS2 model ...")
-            model_mgr.train_ms2_model(psm_df, frag_df)
+            ms2_state_dict = model_mgr.train_ms2_model(psm_df, frag_df)
             logging.info("Finished training MS2 model")
+            if ms2_state_dict is not None:
+                model_mgr.ms2_model.model.load_state_dict(ms2_state_dict)
+                model_mgr.ms2_model.save(os.path.join(output_folder, 'ms2.pth'))
 
-        model_mgr.ccs_model.save(os.path.join(output_folder, 'ccs.pth'))
-        model_mgr.rt_model.save(os.path.join(output_folder, 'rt.pth'))
-        model_mgr.ms2_model.save(os.path.join(output_folder, 'ms2.pth'))
         logging.info(f"Models were saved in {output_folder}")
     except Exception as e:
         logging.error(traceback.format_exc())

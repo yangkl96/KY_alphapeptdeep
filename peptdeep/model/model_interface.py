@@ -4,6 +4,9 @@ __all__ = ['get_cosine_schedule_with_warmup', 'append_nAA_column_if_missing', 'M
 
 # Cell
 import os
+import sys
+from copy import deepcopy
+
 import numpy as np
 import pandas as pd
 import torch
@@ -142,19 +145,45 @@ class ModelInterface(object):
             warmup_epoch, epoch
         )
 
+        #split into train-val split
+        train_df = precursor_df.sample(frac = 0.9)
+        val_df = precursor_df.drop(train_df.index)
+        min_val_loss = sys.maxsize
+        best_epoch = 1
+        state_dict = {}
         for epoch in range(epoch):
-            batch_cost = self._train_one_epoch(
-                precursor_df, epoch,
+            self.model.train()
+            batch_cost = self._train_one_epoch(False,
+                train_df, epoch,
                 batch_size, verbose_each_epoch,
                 **kwargs
             )
             lr_scheduler.step()
+
+            #validation set
+            self.model.eval()
+            val_batch_cost = self._train_one_epoch(True,
+                                               val_df, epoch,
+                                               batch_size, verbose_each_epoch,
+                                               **kwargs
+                                               )
+
             if verbose:
-                print(f'[Training] Epoch={epoch+1}, lr={lr_scheduler.get_last_lr()[0]}, loss={np.mean(batch_cost)}')
+                print(f'[Training] Epoch={epoch+1}, lr={lr_scheduler.get_last_lr()[0]},  train loss={np.mean(batch_cost)},'
+                      f'  val loss={np.mean(val_batch_cost)}')
                 with open(global_settings['model_mgr']["log_file"], "a") as f:
-                    f.write(f'[Training] Epoch={epoch+1}, lr={lr_scheduler.get_last_lr()[0]}, loss={np.mean(batch_cost)}\n')
+                    f.write(f'[Training] Epoch={epoch+1}, lr={lr_scheduler.get_last_lr()[0]},  '
+                            f'train loss={np.mean(batch_cost)},  val loss={np.mean(val_batch_cost)}\n')
+
+            #save intermediate state_dict
+            if np.mean(val_batch_cost) < min_val_loss:
+                min_val_loss = np.mean(val_batch_cost)
+                state_dict = deepcopy(self.model.state_dict())
+                best_epoch = epoch + 1
 
         torch.cuda.empty_cache()
+        print("Best model was from epoch " + str(best_epoch))
+        return state_dict
 
     def train(self,
         precursor_df: pd.DataFrame,
@@ -171,7 +200,7 @@ class ModelInterface(object):
         Trains the model according to specifications.
         """
         if warmup_epoch > 0:
-            self.train_with_warmup(
+            state_dict = self.train_with_warmup(
                 precursor_df,
                 batch_size=batch_size,
                 epoch=epoch,
@@ -181,6 +210,7 @@ class ModelInterface(object):
                 verbose_each_epoch=verbose_each_epoch,
                 **kwargs
             )
+            return state_dict
         else:
             self._prepare_training(precursor_df, lr, **kwargs)
 
@@ -421,7 +451,7 @@ class ModelInterface(object):
                     self.model.state_dict()["output_nn.nn.2.bias"].size())
                 loaded_model_params["output_nn.nn.2.weight"] = torch.rand(
                     self.model.state_dict()["output_nn.nn.2.weight"].size())
-
+        #self.model.requires_grad_(True)
         (
             missing_keys, unexpect_keys
         ) = self.model.load_state_dict(loaded_model_params,
@@ -445,7 +475,7 @@ class ModelInterface(object):
         except (TypeError, ValueError, KeyError) as e:
             logging.info(f'Cannot save model source codes: {str(e)}')
 
-    def _train_one_epoch(self,
+    def _train_one_epoch(self, val,
         precursor_df, epoch, batch_size, verbose_each_epoch,
         **kwargs
     ):
@@ -472,11 +502,11 @@ class ModelInterface(object):
                 )
                 if isinstance(features, tuple):
                     batch_cost.append(
-                        self._train_one_batch(targets, *features)
+                        self._train_one_batch(val, targets, *features)
                     )
                 else:
                     batch_cost.append(
-                        self._train_one_batch(targets, features)
+                        self._train_one_batch(val, targets, features)
                     )
 
             if verbose_each_epoch:
@@ -486,17 +516,19 @@ class ModelInterface(object):
         return batch_cost
 
     def _train_one_batch(
-        self,
+        self, val:bool,
         targets:torch.Tensor,
         *features,
     ):
         """Training for a mini batch"""
-        self.optimizer.zero_grad()
+        if not val:
+            self.optimizer.zero_grad()
         predicts = self.model(*features)
         cost = self.loss_func(predicts, targets)
-        cost.backward()
-        torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1.0)
-        self.optimizer.step()
+        if not val:
+            cost.backward()
+            torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1.0)
+            self.optimizer.step()
         return cost.item()
 
     def _predict_one_batch(self,

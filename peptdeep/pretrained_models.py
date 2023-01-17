@@ -367,20 +367,20 @@ class ModelManager(object):
         self._train_psm_logging = True
 
 
-    @property
-    def instrument(self):
-        return self._instrument
-    @instrument.setter
-    def instrument(self, instrument_name:str):
-        instrument_name = instrument_name.upper()
-        if instrument_name in self.mgr_settings[
-            'instrument_group'
-        ]:
-            self._instrument = self.mgr_settings[
-                'instrument_group'
-            ][instrument_name]
-        else:
-            self._instrument = 'Lumos'
+    #@property
+    #def instrument(self):
+    #    return self._instrument
+    #@instrument.setter
+    #def instrument(self, instrument_name:str):
+    #    instrument_name = instrument_name.upper()
+    #    if instrument_name in self.mgr_settings[
+    #        'instrument_group'
+    #    ]:
+    #        self._instrument = self.mgr_settings[
+    #            'instrument_group'
+    #        ][instrument_name]
+    #    else:
+    #        self._instrument = 'Lumos'
 
     def set_default_nce_instrument(self, df):
         """
@@ -389,11 +389,12 @@ class ModelManager(object):
         """
         def getNCE(x):
             return self.nce[x["raw_name"] + "_" + str(x["scan_num"])]
+        def getInstrument(x):
+            return self.instrument[x["raw_name"]]
         if 'nce' not in df.columns:
             df['nce'] = df.apply(lambda x: getNCE(x), axis = 1)
         if 'instrument' not in df.columns:
-            df['instrument'] = self.instrument
-        print(df)
+            df['instrument'] = df.apply(lambda x: getInstrument(x), axis = 1)
 
     def set_default_nce(self, df):
         """Alias for `set_default_nce_instrument`"""
@@ -543,13 +544,14 @@ class ModelManager(object):
                 with open(global_settings['model_mgr']["log_file"], "a") as f:
                     f.write(f"{len(tr_df)} PSMs for RT model training/transfer learning\n")
             if len(tr_df) > 0:
-                self.rt_model.train(tr_df, 
+                state_dict = self.rt_model.train(tr_df,
                     batch_size=self.batch_size_to_train_rt_ccs,
                     epoch=self.epoch_to_train_rt_ccs,
                     warmup_epoch=self.warmup_epoch_to_train_rt_ccs,
                     lr=self.lr_to_train_rt_ccs,
                     verbose=self.train_verbose,
                 )
+                return state_dict
 
     def train_ccs_model(self,
         psm_df:pd.DataFrame,
@@ -587,13 +589,14 @@ class ModelManager(object):
             if self._train_psm_logging:
                 logging.info(f"{len(tr_df)} PSMs for CCS model training/transfer learning\n")
             if len(tr_df) > 0:
-                self.ccs_model.train(tr_df, 
+                state_dict = self.ccs_model.train(tr_df,
                     batch_size=self.batch_size_to_train_rt_ccs,
                     epoch=self.epoch_to_train_rt_ccs,
                     warmup_epoch=self.warmup_epoch_to_train_rt_ccs,
                     lr=self.lr_to_train_rt_ccs,
                     verbose=self.train_verbose,
                 )
+                return state_dict
 
     def train_ms2_model(self,
         psm_df: pd.DataFrame,
@@ -657,7 +660,7 @@ class ModelManager(object):
                     logging.info(f"{len(tr_df)} PSMs for MS2 model training/transfer learning")
                     with open(global_settings['model_mgr']["log_file"], "a") as f:
                         f.write(f"{len(tr_df)} PSMs for MS2 model training/transfer learning\n")
-                self.ms2_model.train(tr_df, 
+                state_dict = self.ms2_model.train(tr_df,
                     fragment_intensity_df=tr_inten_df,
                     batch_size=self.batch_size_to_train_ms2,
                     epoch=self.epoch_to_train_ms2,
@@ -665,6 +668,7 @@ class ModelManager(object):
                     lr=self.lr_to_train_ms2,
                     verbose=self.train_verbose,
                 )
+                return state_dict
 
     def predict_ms2(self, precursor_df:pd.DataFrame, 
         *, 

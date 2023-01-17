@@ -5,19 +5,21 @@ if __name__ == '__main__':
     import pandas as pd
     import argparse
     import sys
-    import pyteomics
+    from collections import Counter
+    from xml.sax import saxutils
 
     parser = argparse.ArgumentParser(description='Training transfer model')
-    parser.add_argument('peptdeep_folder', type = str, help='folder for peptdeep')
     parser.add_argument('psm_folder', type = str, help='folder for PSMs')
     parser.add_argument('ms_folder', type = str, help='folder for mass spec output files')
     parser.add_argument('output_folder', type = str, help='folder for saving transfer model')
     parser.add_argument('fragmentation', type = str, help='fragmentation method')
 
+    parser.add_argument('--peptdeep_folder', type=str, help='folder for peptdeep', nargs='?', default=".")
     parser.add_argument('--psm_type', type = str, help='type of PSMs; default = maxquant', nargs='?', default="maxquant")
     parser.add_argument('--ms_file_type', type = str, help='type of ms file; default = mgf', nargs='?', default="mgf")
     parser.add_argument('--min_score', type = int, help='minimum Andromeda score', nargs='?', default=150)
-    parser.add_argument('--instrument', type = str, help='what mass spec; default = Lumos', nargs='?', default="Lumos")
+    parser.add_argument('--expect', type=float, help='expectation value for MSFragger pepxml filtering', nargs='?', default=0.0001)
+    parser.add_argument('--instrument', type = str, help='what mass spec; default: search in mzml file', nargs='?', default="TBD")
     parser.add_argument('--model_type', type = str, help='generic, phos, hla, or digly; default = generic',
                         nargs='?', default="generic") #default
     parser.add_argument('--external_ms2_model', type=str, help='path to external ms2 model', nargs='?', default = "")
@@ -26,9 +28,9 @@ if __name__ == '__main__':
     parser.add_argument('--no_train_ms2', action=argparse.BooleanOptionalAction,
                         help='whether to train ms2. Adding this flag will not train ms2 models')
     parser.add_argument('--alphapept_folder', type=str, help='folder for alphapept', nargs='?', default="./alphapept/")
-    parser.add_argument('--settings_type', type=str, help='settings.yaml to use', default="default")
+    parser.add_argument('--settings_type', type=str, help='settings.yaml to use', default="hcd")
     parser.add_argument('--skip_filtering', type=bool, help='settings.yaml to use', default=False)
-    parser.add_argument('--mask_mods', type=bool, help='whether to mask modloss fragments', default=True)
+    parser.add_argument('--mask_mods', type=bool, help='whether to mask modloss fragments', default=False)
     parser.add_argument('--lr_ms2', help='learning rate for ms2', default=0.0001)
     parser.add_argument('--epoch_ms2', help='number of epochs to train ms2', default=20)
     parser.add_argument('--lr_rt', help='learning rate for rt', default=0.0001)
@@ -53,8 +55,9 @@ if __name__ == '__main__':
         f.write(args.settings_type)
     from peptdeep.pipeline_api import transfer_learn
     from peptdeep.settings import global_settings
+    import instrument_reader
     import datetime
-    from pyteomics import mzml
+    from pyteomics import mzml, pepxml
 
     #general settings
     mgr_settings = global_settings['model_mgr']
@@ -63,7 +66,9 @@ if __name__ == '__main__':
     mgr_settings["transfer"]["grid_nce_search"] = False
     mgr_settings["model_type"] = args.model_type
     mgr_settings["external_ms2_model"] = args.external_ms2_model
-    mgr_settings["grid_instrument"] = args.instrument
+    if args.instrument.lower() not in ["lumos", "qe", "sciextof", "timstof", "tbd"]:
+        print("please set instrument to lumos, qe, sciextof, or timstof")
+        sys.exit(0)
 
     if args.no_train_rt_ccs:
         mgr_settings["transfer"]['epoch_rt_ccs'] = 0
@@ -88,6 +93,9 @@ if __name__ == '__main__':
                 elif args.ms_file_type == "mgf":
                     if file.endswith(".mgf"):
                         all_ms_files.append(os.path.join(root, file))
+                elif args.ms_file_type.lower() == "mzml":
+                    if file.lower().endswith(".mzml"):
+                        all_ms_files.append(os.path.join(root, file))
 
                 splitFile = file.split(".")
                 splitFile = ".".join(splitFile[0: len(splitFile) - 1])
@@ -99,8 +107,9 @@ if __name__ == '__main__':
 
     #dict of dict for NCE
     NCE_dict = {}
-    def enterNCEdict(x, mzmlFileDict):
-        entry = mzmlFileDict[x["Scan number"]]
+    instrument_dict = {}
+    def enterNCEdict(x, mzmlFileDict, number_identifier = "start_scan"):
+        entry = mzmlFileDict[x[number_identifier]]
         scan_type_split = entry["scanList"]["scan"][0]["filter string"].split("@")
         nce = ""
         for s in scan_type_split[1:]:
@@ -115,54 +124,183 @@ if __name__ == '__main__':
                 nce = nce[i:]
                 break
 
-        NCE_dict[x["Raw file"] + "_" + str(x["Scan number"])] = float(nce)
+        if "spectrum" in x.index:
+            xsplit = x["spectrum"].split(".")
+            NCE_dict[".".join(xsplit[0:len(xsplit) - 3]) + "_" + str(x[number_identifier])] = float(nce)
+        else:
+            NCE_dict[x["Raw file"] + "_" + str(x[number_identifier])] = float(nce)
+        return nce
 
     all_psm_files = []
     psm_folders = args.psm_folder.split(",")
     i = 0
+    if args.skip_filtering:
+        print("setting to not skip filtering for now")
+        args.skip_filtering = False
     for psm_f in psm_folders:
         print(psm_f)
-        for root, dirs, files in os.walk(psm_f):
-            for file in files:
-                if file == "msms.txt":
-                    if not args.skip_filtering:
-                        print(str(i) + ", " + os.path.join(root, file))
-                        i += 1
-                        df = pd.read_csv(os.path.join(root, file), sep="\t")
+        if args.psm_type == "msfragger_pepxml":
+            # need to get filtered pepxml file for training
+            # code adapted from pyteomics.pepxmltk
 
-                        df = df[df["Score"] >= args.min_score]
-                        df = df[df["Fragmentation"].str.lower() == args.fragmentation.lower()]
-                        df.reset_index(drop = True, inplace = True)
-                        df.to_csv(os.path.join(root, "msms_filter_" + args.fragmentation.lower() + ".txt"), sep = "\t", index=False)
+            peptide_counter = Counter() #only want to use peptides that appear once
 
-                        #read in mzml for NCE information
-                        mzmlRoot = rawToPath[df["Raw file"][0]].replace("mgf", "mzml")
+            for root, dirs, files in os.walk(psm_f):
+                for file in files:
+                    if file.endswith("pepXML") and not file.endswith("filter.pepXML"):
+                        #count how many times each modified peptide-charge combo appears,
+                        #so as to only get unique ones for training
+                        df = pepxml.filter_df(os.path.join(root, file), fdr=1, decoy_prefix="rev_", correction=1)
+                        for i, row in df.iterrows():
+                            peptide_counter[row["modified_peptide"] + str(row["assumed_charge"])] += 1
+
+            for root, dirs, files in os.walk(psm_f):
+                for file in files:
+                    if file.endswith("pepXML") and not file.endswith("filter.pepXML"):
+                        # HOW TO DEAL WITH DIFFERENT FRAGMENTATIONS? DO NOT ALLOW AT FIRST, BUT HOW?
+                        print(file)
+
+                        # get the PSMs below some expect
+                        df = pepxml.filter_df(os.path.join(root, file), fdr=1, decoy_prefix="rev_", correction=1)
+                        df = df[df["expect"] < args.expect]
+                        df["counter_id"] = df.apply(lambda x: x["modified_peptide"] +
+                                                              str(x["assumed_charge"]), axis = 1)
+                        df["counts"] = df.apply(lambda x: peptide_counter[x["counter_id"]], axis = 1)
+                        df = df[df["counts"] == 1]
+                        df["nce"] = ""
+
+                        base_name = file.replace(".pepXML", "")
+                        mzml_name = rawToPath[base_name] + "/" + base_name + ".mzML"
+                        print("Reading " + mzml_name)
                         try:
-                            mzmlFile = mzml.read(mzmlRoot + "/" + df["Raw file"][0] + ".mzML")
+                            mzmlFile = mzml.read(mzml_name, use_index=True)
                         except:
-                            print(mzmlRoot + "/" + df["Raw file"][0] + ".mzML does not exist")
+                            print(mzml_name + " does not exist")
                             continue
-                        #try:
+
+                        scan_num_set = set(df["start_scan"].values)
+
+                        print("Extracting nce and instrument information")
+
+                        # extract NCE info for each row using scan number minus 1 to get index
+                        print(str(df.shape[0]) + " PSMs")
+                        if df.shape[0] == 0: #WHAT TO DO IF NO ENTRIES IN END? BECOME LESS RESTRICTIVE??
+                            print("Skipping to next file")
+                            continue
                         mzmlFileDict = {}
                         for entry in mzmlFile:
-                            mzmlFileDict[entry["index"] + 1] = entry
-                        #extract NCE info for each row using scan number minus 1 to get index
-                        df.apply(lambda x: enterNCEdict(x, mzmlFileDict), axis = 1)
-                        #except:
-                        #    print("issues with parsing " + mzmlRoot + "/" + df["Raw file"][0] + ".mzML")
-                        #    continue
+                            if entry["index"] + 1 in scan_num_set:
+                                mzmlFileDict[entry["index"] + 1] = entry
+                        df["nce"] = df.apply(lambda x: enterNCEdict(x, mzmlFileDict), axis=1)
 
-                    all_psm_files.append(os.path.join(root, "msms_filter_" + args.fragmentation.lower() + ".txt"))
+                        # read in instruments
+                        raw_name = mzml_name.replace(".mzml", "").replace(".mzML", "")
+                        raw_name = raw_name.split("/")[-1].split("\"")[-1]
+                        if args.instrument == "TBD":
+                            instrument_dict[raw_name] = instrument_reader.read_instrument(mzml_name)
+                        else:
+                            instrument_dict[raw_name] = args.instrument
+
+                        #add to final psm list
+                        psms = set()  # for holding the best PSMs, those that will be used for transfer learning
+                        psms.update(psm for psm in df['spectrum'])
+
+                        #write out pepxml
+                        with open(os.path.join(root, file).replace("pepXML", "filter.pepXML"), 'w') as output_file:
+                            unlocked = True
+
+                            with open(os.path.join(root, file)) as input_file:
+                                lines = input_file.readlines()
+                            for line in lines:
+                                if '<spectrum_query' in line:
+                                    check_line = saxutils.unescape(line.split('spectrum="')[1].split('" ')[0],
+                                                                   {'&quot;': '"'})
+                                    if check_line not in psms:
+                                        unlocked = False
+                                    else:
+                                        unlocked = True
+                                if unlocked:
+                                    output_file.write(line)
+                                if '</spectrum_query>' in line:
+                                    unlocked = True
+
+                        all_psm_files.append(os.path.join(root, file).replace("pepXML", "filter.pepXML"))
+
+        elif args.psm_type == "maxquant":
+            for root, dirs, files in os.walk(psm_f):
+                for file in files:
+                    if file == "msms.txt":
+                        if not args.skip_filtering:
+                            print(str(i) + ", " + os.path.join(root, file))
+                            i += 1
+                            df = pd.read_csv(os.path.join(root, file), sep="\t", low_memory = False)
+
+                            #get only PSMs with relevant mzml files
+                            df = df[df["Raw file"].isin(rawToPath.keys())]
+                            df = df[df["Score"] >= args.min_score]
+                            df = df[df["Fragmentation"].str.lower() == args.fragmentation.lower()]
+                            df.reset_index(drop = True, inplace = True)
+
+                            #read in mzmls for NCE information
+                            total_columns = list(df.columns)
+                            total_columns.append("nce")
+                            total_df = pd.DataFrame(columns = total_columns)
+                            for raw in set(df["Raw file"].unique()):
+                                mzmlRoot = rawToPath[df["Raw file"][0]].replace("mgf", "mzml")
+                                print("Reading " + mzmlRoot + "/" + raw + ".mzML")
+                                try:
+                                    mzmlFile = mzml.read(mzmlRoot + "/" + raw + ".mzML",
+                                                         use_index = True)
+                                except:
+                                    print(mzmlRoot + "/" + raw + ".mzML does not exist")
+                                    continue
+
+                                mini_df = df[df["Raw file"] == raw].copy()
+                                scan_num_set = set(mini_df["Scan number"].values)
+
+                                print("Extracting nce and instrument information")
+
+                                #extract NCE info for each row using scan number minus 1 to get index
+                                print(str(mini_df.shape[0]) + " PSMs")
+                                mzmlFileDict = {}
+                                for entry in mzmlFile:
+                                    if entry["index"] + 1 in scan_num_set:
+                                        mzmlFileDict[entry["index"] + 1] = entry
+                                mini_df["nce"] = mini_df.apply(
+                                    lambda x: enterNCEdict(x, mzmlFileDict, number_identifier="Scan number"), axis = 1)
+
+                                #read in instruments
+                                if args.instrument == "TBD":
+                                    instrument_dict[raw] =\
+                                        instrument_reader.read_instrument(mzmlRoot + "/" + raw + ".mzML")
+                                else:
+                                    instrument_dict[raw] = args.instrument
+
+                                #add df back together
+                                total_df = pd.concat([total_df, mini_df])
+
+                            #remove all but the best PSMs
+                            df = total_df
+                            df.sort_values(by = "Score", ascending = False, inplace = True)
+                            df.drop_duplicates(subset = ["Modified sequence", "Charge", "nce"], inplace = True)
+                            df = df.reset_index(drop = True)
+                            df.to_csv(os.path.join(root, "msms_filter_" + args.fragmentation.lower() + ".txt"), sep = "\t", index=False)
+
+                        all_psm_files.append(os.path.join(root, "msms_filter_" + args.fragmentation.lower() + ".txt"))
+                        print("Done reading " + mzmlRoot + "/" + raw + ".mzML")
 
     mgr_settings["default_nce"] = NCE_dict
+    mgr_settings["default_instrument"] = instrument_dict
 
     print("done finding psm files")
     if (args.processing_only):
         print("processing done")
         sys.exit(0)
     mgr_settings["transfer"]["psm_files"] = all_psm_files
-    mgr_settings["transfer"]["psm_type"] = "maxquant"
+    mgr_settings["transfer"]["psm_type"] = args.psm_type
 
+    #here is where we decide how many splits to do
+    #appropriately name the sub folders
     mgr_settings["transfer"]["model_output_folder"] = args.output_folder
     if not os.path.exists(args.output_folder):
         os.makedirs(args.output_folder)
