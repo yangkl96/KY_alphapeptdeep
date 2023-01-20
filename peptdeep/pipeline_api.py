@@ -135,10 +135,12 @@ def transfer_learn(settings_dict: dict = settings.global_settings, verbose=True)
                 model_mgr.psm_num_to_train_ms2 > 0 and
                 len(mgr_settings['transfer']['ms_files']) > 0
         ):
-            if 'psm_df' not in mgr_settings.keys():
+            if 'psm_df' not in mgr_settings.keys() or \
+                    settings_dict['model_mgr']['transfer']['psm_files'] != mgr_settings["check_files"]:
                 psm_df, frag_df = match_psms(settings_dict)
                 mgr_settings['psm_df'] = psm_df
                 mgr_settings['frag_df'] = frag_df
+                mgr_settings["check_files"] = settings_dict['model_mgr']['transfer']['psm_files']
             else:
                 print("Reloading psm and frag df")
                 psm_df = mgr_settings['psm_df']
@@ -151,33 +153,44 @@ def transfer_learn(settings_dict: dict = settings.global_settings, verbose=True)
             )
             frag_df = None
 
+        val_dict = {}
         logging.info("Training CCS model ...")
-        ccs_state_dict = model_mgr.train_ccs_model(psm_df)
+        results = model_mgr.train_ccs_model(psm_df)
         logging.info("Finished training CCS model")
-        if ccs_state_dict is not None:
+        if results is not None:
+            ccs_state_dict = results[0]
+            ccs_min_val_loss = results[1]
             model_mgr.ccs_model.model.load_state_dict(ccs_state_dict)
             model_mgr.ccs_model.save(os.path.join(output_folder, 'ccs.pth'))
+            val_dict["ccs"] = ccs_min_val_loss
 
         logging.info("Training RT model ...")
-        rt_state_dict = model_mgr.train_rt_model(psm_df)
+        results = model_mgr.train_rt_model(psm_df)
         logging.info("Finished training RT model")
-        if rt_state_dict is not None:
+        if results is not None:
+            rt_state_dict = results[0]
+            rt_min_val_loss = results[1]
             model_mgr.rt_model.model.load_state_dict(rt_state_dict)
             model_mgr.rt_model.save(os.path.join(output_folder, 'rt.pth'))
+            val_dict["rt"] = rt_min_val_loss
 
         if frag_df is not None and len(frag_df) > 0:
             logging.info("Training MS2 model ...")
-            ms2_state_dict = model_mgr.train_ms2_model(psm_df, frag_df)
+            results = model_mgr.train_ms2_model(psm_df, frag_df)
             logging.info("Finished training MS2 model")
-            if ms2_state_dict is not None:
+            if results is not None:
+                ms2_state_dict = results[0]
+                ms2_min_val_loss = results[1]
                 model_mgr.ms2_model.model.load_state_dict(ms2_state_dict)
                 model_mgr.ms2_model.save(os.path.join(output_folder, 'ms2.pth'))
+                val_dict["ms2"] = ms2_min_val_loss
 
         logging.info(f"Models were saved in {output_folder}")
+
+        return val_dict
     except Exception as e:
         logging.error(traceback.format_exc())
         raise e
-
 
 def rescore_psms(settings_dict: dict = settings.global_settings):
     try:

@@ -388,7 +388,10 @@ class ModelManager(object):
         with self.nce and self.instrument
         """
         def getNCE(x):
-            return self.nce[x["raw_name"] + "_" + str(x["scan_num"])]
+            if type(self.nce) == dict:
+                return self.nce[x["raw_name"] + "_" + str(x["scan_num"])]
+            else:
+                return self.nce
         def getInstrument(x):
             return self.instrument[x["raw_name"]]
         if 'nce' not in df.columns:
@@ -544,14 +547,14 @@ class ModelManager(object):
                 with open(global_settings['model_mgr']["log_file"], "a") as f:
                     f.write(f"{len(tr_df)} PSMs for RT model training/transfer learning\n")
             if len(tr_df) > 0:
-                state_dict = self.rt_model.train(tr_df,
+                state_dict, min_val_loss = self.rt_model.train(tr_df,
                     batch_size=self.batch_size_to_train_rt_ccs,
                     epoch=self.epoch_to_train_rt_ccs,
                     warmup_epoch=self.warmup_epoch_to_train_rt_ccs,
                     lr=self.lr_to_train_rt_ccs,
                     verbose=self.train_verbose,
                 )
-                return state_dict
+                return state_dict, min_val_loss
 
     def train_ccs_model(self,
         psm_df:pd.DataFrame,
@@ -589,14 +592,14 @@ class ModelManager(object):
             if self._train_psm_logging:
                 logging.info(f"{len(tr_df)} PSMs for CCS model training/transfer learning\n")
             if len(tr_df) > 0:
-                state_dict = self.ccs_model.train(tr_df,
+                state_dict, min_val_loss = self.ccs_model.train(tr_df,
                     batch_size=self.batch_size_to_train_rt_ccs,
                     epoch=self.epoch_to_train_rt_ccs,
                     warmup_epoch=self.warmup_epoch_to_train_rt_ccs,
                     lr=self.lr_to_train_rt_ccs,
                     verbose=self.train_verbose,
                 )
-                return state_dict
+                return state_dict, min_val_loss
 
     def train_ms2_model(self,
         psm_df: pd.DataFrame,
@@ -653,14 +656,13 @@ class ModelManager(object):
                     )
                     tr_df['nce'] = self.nce
                     tr_df['instrument'] = self.instrument
-                    print(tr_df.head())
                 else:
                     self.set_default_nce_instrument(tr_df)
                 if self._train_psm_logging:
                     logging.info(f"{len(tr_df)} PSMs for MS2 model training/transfer learning")
                     with open(global_settings['model_mgr']["log_file"], "a") as f:
                         f.write(f"{len(tr_df)} PSMs for MS2 model training/transfer learning\n")
-                state_dict = self.ms2_model.train(tr_df,
+                state_dict, min_val_loss = self.ms2_model.train(tr_df,
                     fragment_intensity_df=tr_inten_df,
                     batch_size=self.batch_size_to_train_ms2,
                     epoch=self.epoch_to_train_ms2,
@@ -668,7 +670,7 @@ class ModelManager(object):
                     lr=self.lr_to_train_ms2,
                     verbose=self.train_verbose,
                 )
-                return state_dict
+                return state_dict, min_val_loss
 
     def predict_ms2(self, precursor_df:pd.DataFrame, 
         *, 

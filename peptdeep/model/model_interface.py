@@ -148,6 +148,25 @@ class ModelInterface(object):
         #split into train-val split
         train_df = precursor_df.sample(frac = 0.9)
         val_df = precursor_df.drop(train_df.index)
+
+        PTM_set = set()
+        for mod in set(precursor_df.mods):
+            mods = mod.split(";")
+            for m in mods:
+                PTM_set.add(m)
+
+        #print number of PSMs with each PTM
+        print("Considered PTMs:")
+        for PTM in PTM_set:
+            if PTM == "":
+                PTM = "Unmodified"
+                num_train = train_df[train_df["mods"] == ""].shape[0]
+                num_val = val_df[val_df["mods"] == ""].shape[0]
+            else:
+                num_train = train_df[train_df["mods"].str.contains(PTM)].shape[0]
+                num_val = val_df[val_df["mods"].str.contains(PTM)].shape[0]
+            print("\t" + PTM + ": train size=" + str(num_train) + ", val size=" + str(num_val))
+
         min_val_loss = sys.maxsize
         best_epoch = 1
         state_dict = {}
@@ -183,7 +202,7 @@ class ModelInterface(object):
 
         torch.cuda.empty_cache()
         print("Best model was from epoch " + str(best_epoch))
-        return state_dict
+        return state_dict, min_val_loss
 
     def train(self,
         precursor_df: pd.DataFrame,
@@ -200,7 +219,7 @@ class ModelInterface(object):
         Trains the model according to specifications.
         """
         if warmup_epoch > 0:
-            state_dict = self.train_with_warmup(
+            state_dict, min_val_loss = self.train_with_warmup(
                 precursor_df,
                 batch_size=batch_size,
                 epoch=epoch,
@@ -210,7 +229,7 @@ class ModelInterface(object):
                 verbose_each_epoch=verbose_each_epoch,
                 **kwargs
             )
-            return state_dict
+            return state_dict, min_val_loss
         else:
             self._prepare_training(precursor_df, lr, **kwargs)
 
