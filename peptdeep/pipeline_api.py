@@ -65,7 +65,7 @@ def match_psms(settings_dict: dict = settings.global_settings):
     max_charge = settings_dict['model']['max_frag_charge']
     charged_frag_types = get_charged_frag_types(frag_types, max_charge)
 
-    psm_df = import_psm_df( #option to split it, provide multiple psm_types
+    psm_df = import_psm_df(
         mgr_settings['transfer']['psm_files'],
         mgr_settings['transfer']['psm_type'],
     )
@@ -138,6 +138,10 @@ def transfer_learn(settings_dict: dict = settings.global_settings, verbose=True)
             if 'psm_df' not in mgr_settings.keys() or \
                     settings_dict['model_mgr']['transfer']['psm_files'] != mgr_settings["check_files"]:
                 psm_df, frag_df = match_psms(settings_dict)
+                for col in frag_df.columns:
+                    print(col)
+                    print(max(frag_df[col]))
+                sys.exit(0)
                 mgr_settings['psm_df'] = psm_df
                 mgr_settings['frag_df'] = frag_df
                 mgr_settings["check_files"] = settings_dict['model_mgr']['transfer']['psm_files']

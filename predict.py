@@ -48,12 +48,12 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Running base model')
     parser.add_argument('spectraRTinput', type=str, help='peptdeep input spectraRT.csv from MSBooster')
     parser.add_argument('--peptdeep_folder', type=str, help='folder for peptdeep', default = ".")
-    parser.add_argument('--model_type', type=str, help='generic, phospho, hla, or digly', default = "generic")
+    parser.add_argument('--model_type', type=str, help='generic, phos, hla, or digly', default = "generic")
     parser.add_argument('--external_ms2_model', type=str, help='path to external ms2 model', default = "")
     parser.add_argument('--external_rt_model', type=str, help='path to external rt model', default="")
-    #parser.add_argument('--frag_types', type=str, help='fragment ion types, separated by a comma and nothing else', default = "b,y,b_modloss,y_modloss")
     parser.add_argument('--settings_type', type=str, help='settings.yaml to use', default="hcd")
-    parser.add_argument('--mask_mods', type=bool, help='whether to mask modloss fragments', default=False)
+    parser.add_argument('--mask_mods', action=argparse.BooleanOptionalAction, help='whether to mask modloss fragments',
+                        default=False)
 
     args = parser.parse_args()
     sys.path.insert(1, args.peptdeep_folder)
@@ -84,9 +84,10 @@ if __name__ == '__main__':
     model_mgr = ""
     if args.external_ms2_model != "":
         model_mgr_settings["external_ms2_model"] = args.external_ms2_model
+        print("Using " + model_mgr_settings["external_ms2_model"] + " as ms2 model")
     if args.external_rt_model != "":
         model_mgr_settings["external_rt_model"] = args.external_rt_model
-    print("Using " + model_mgr_settings["external_ms2_model"] + " as ms2 model")
+        print("Using " + model_mgr_settings["external_rt_model"] + " as rt model")
 
     model_mgr_settings["model_type"] = args.model_type
     if model_mgr_settings["model_type"] == "phos" or not args.mask_mods:
@@ -146,4 +147,4 @@ if __name__ == '__main__':
         f.write(entry)
     f.close()
     end = time.time()
-    print("prediction took " + str(end - start) + " sec")
+    print("Prediction took " + str(end - start) + " sec")

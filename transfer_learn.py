@@ -8,6 +8,7 @@ if __name__ == '__main__':
     from collections import Counter
     from xml.sax import saxutils
     import shutil
+    from random import sample
     from time import time
 
     parser = argparse.ArgumentParser(description='Training transfer model')
@@ -36,15 +37,16 @@ if __name__ == '__main__':
     parser.add_argument('--skip_filtering', action=argparse.BooleanOptionalAction, #may decide to make this for internal use only
                         help='whether to skip some writing filtered pepxmls. ' +
                              'Only use if rerunning with same parameters as last run')
-    parser.add_argument('--mask_mods', action=argparse.BooleanOptionalAction, help='whether to mask modloss fragments')
+    parser.add_argument('--mask_mods', action=argparse.BooleanOptionalAction, help='whether to mask modloss fragments',
+                        default = False)
     parser.add_argument('--lr_ms2', help='learning rate for ms2', default=0.0001)
     parser.add_argument('--epoch_ms2', help='number of epochs to train ms2', default=20)
     parser.add_argument('--lr_rt', help='learning rate for rt', default=0.0001)
-    parser.add_argument('--epoch_rt', help='number of epochs to train rt', default=40)
+    parser.add_argument('--epoch_rt', help='number of epochs to train rt', default=20)
     parser.add_argument('--batch_size_ms2', help='batch size for ms2', default=512)
     parser.add_argument('--batch_size_rt', help='batch size for rt', default=512)
     parser.add_argument('--lr', help='learning rate for both', default=0.0001)
-    parser.add_argument('--epoch', help='number of epochs to train both', default=40)
+    parser.add_argument('--epoch', help='number of epochs to train both', default=20)
     parser.add_argument('--batch_size', help='batch size for both', default=512)
     parser.add_argument('--grid_search', action=argparse.BooleanOptionalAction, help='whether to grid search over parameters separated by commas', default=False)
     #parser.add_argument('--processing_only', action=argparse.BooleanOptionalAction, help='whether to just do preprocessing of files', default=False)
@@ -53,6 +55,8 @@ if __name__ == '__main__':
     parser.add_argument('--modification_tsv', type = str, help = 'path to modification_alphapeptdeep.tsv', default = None)
     parser.add_argument('--diff_nce', action=argparse.BooleanOptionalAction,
                         help = 'whether nce is different within each mass spec run')
+    parser.add_argument('--downsize_unmodified_psms', type = float,
+                        help = 'what proportion of unmodified psms to keep', default = 1)
 
     args = parser.parse_args()
 
@@ -219,6 +223,15 @@ if __name__ == '__main__':
                                                                   str(x["assumed_charge"]), axis = 1)
                             df.loc[:, "counts"] = df.apply(lambda x: peptide_counter[x["counter_id"]], axis = 1)
                             df = df[df["counts"] == 1]
+
+                            if args.downsize_unmodified_psms < 1:
+                                unmod_idx = list(df[df["modifications"].str.len() == 0].index)
+                                unmod_idx = sample(unmod_idx, int((1 - args.downsize_unmodified_psms) * len(unmod_idx)))
+                                exclude_df = df.index.isin(unmod_idx)
+                                df = df[~exclude_df]
+                            elif args.downsize_unmodified_psms == 0:
+                                print("downsize_unmodified_psms must be greater than 0. " +
+                                      "Please set to a value greater than 0")
                         df["nce"] = ""
 
                         scan_num_set = set(df["start_scan"].values)
