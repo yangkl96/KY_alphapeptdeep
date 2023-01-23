@@ -429,12 +429,12 @@ class pDeepModel(model_interface.ModelInterface):
         precursor_df:pd.DataFrame,
         reference_frag_df:pd.DataFrame=None,
     ):
-        if reference_frag_df is None and precursor_df.nAA.is_monotonic:
+        if reference_frag_df is None and precursor_df.nAA.is_monotonic_increasing:
             self._predict_in_order = True
             
             if 'frag_start_idx' in precursor_df.columns:
                 precursor_df.drop(
-                    columns=['frag_start_idx','frag_end_idx'],
+                    columns=['frag_start_idx','frag_stop_idx'],
                     inplace=True
                 )
         else:
@@ -479,7 +479,7 @@ class pDeepModel(model_interface.ModelInterface):
             get_sliced_fragment_dataframe(
                 fragment_intensity_df, 
                 batch_df[
-                    ['frag_start_idx','frag_end_idx']
+                    ['frag_start_idx','frag_stop_idx']
                 ].values
             ).values
         ).view(-1, 
@@ -499,7 +499,7 @@ class pDeepModel(model_interface.ModelInterface):
         if self._predict_in_order:
             self.predict_df.values[
                 batch_df.frag_start_idx.values[0]:
-                batch_df.frag_end_idx.values[-1], 
+                batch_df.frag_stop_idx.values[-1],
             :] = predicts.reshape(
                     (-1, len(self.charged_frag_types))
                 )
@@ -510,7 +510,7 @@ class pDeepModel(model_interface.ModelInterface):
                     (-1, len(self.charged_frag_types))
                 ),
                 batch_df[
-                    ['frag_start_idx','frag_end_idx']
+                    ['frag_start_idx','frag_stop_idx']
                 ].values,
             )
 
@@ -685,10 +685,10 @@ def normalize_training_intensities(
     """
     new_frag_intens_list = []
     new_frag_lens = []
-    for i, (frag_start_idx, frag_end_idx) in enumerate(
-        train_df[['frag_start_idx','frag_end_idx']].values
+    for i, (frag_start_idx, frag_stop_idx) in enumerate(
+        train_df[['frag_start_idx','frag_stop_idx']].values
     ):
-        intens = frag_intensity_df.values[frag_start_idx:frag_end_idx]
+        intens = frag_intensity_df.values[frag_start_idx:frag_stop_idx]
         new_frag_lens.append(len(intens))
         max_inten = np.max(intens)
         if max_inten > 0:
@@ -698,7 +698,7 @@ def normalize_training_intensities(
     indices[1:] = new_frag_lens
     indices = np.cumsum(indices)
     train_df['frag_start_idx'] = indices[:-1]
-    train_df['frag_end_idx'] = indices[1:]
+    train_df['frag_stop_idx'] = indices[1:]
 
     frag_df = pd.DataFrame(
         data=np.concatenate(new_frag_intens_list, axis=0), 
@@ -721,14 +721,14 @@ def normalize_fragment_intensities_(
         Fragment intensity DataFrame to be normalized. 
         Intensities will be normalzied inplace.
     """
-    for i, (frag_start_idx, frag_end_idx) in enumerate(
-        psm_df[['frag_start_idx','frag_end_idx']].values
+    for i, (frag_start_idx, frag_stop_idx) in enumerate(
+        psm_df[['frag_start_idx','frag_stop_idx']].values
     ):
-        intens = frag_intensity_df.values[frag_start_idx:frag_end_idx]
+        intens = frag_intensity_df.values[frag_start_idx:frag_stop_idx]
         max_inten = np.max(intens)
         if max_inten > 0:
             intens /= max_inten
-        frag_intensity_df.values[frag_start_idx:frag_end_idx,:] = intens
+        frag_intensity_df.values[frag_start_idx:frag_stop_idx,:] = intens
 
 
 
@@ -843,7 +843,7 @@ def calc_ms2_similarity(
                 get_sliced_fragment_dataframe(
                     predict_intensity_df, 
                     batch_df[
-                        ['frag_start_idx','frag_end_idx']
+                        ['frag_start_idx','frag_stop_idx']
                     ].values,
                     charged_frag_types
                 ).values,
@@ -856,7 +856,7 @@ def calc_ms2_similarity(
                 get_sliced_fragment_dataframe(
                     fragment_intensity_df, 
                     batch_df[
-                        ['frag_start_idx','frag_end_idx']
+                        ['frag_start_idx','frag_stop_idx']
                     ].values,
                     charged_frag_types
                 ).values,

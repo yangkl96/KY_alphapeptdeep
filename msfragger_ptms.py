@@ -65,11 +65,11 @@ def read_fragger_params(fragger):
 
 def search_modification_tsv(mod_tsv, PTM_masses, mass_tol = 0.1):
     PTM_names = set()
-    df = pd.read_csv(mod_tsv, sep = "\t", usecols = ["mod_name", "mono_mass"])
+    df = pd.read_csv(mod_tsv, sep = "\t", usecols = ["mod_name", "unimod_mass"])
     for mass in PTM_masses:
         min_mass = mass - mass_tol
         max_mass = mass + mass_tol
-        sub_df = df[(df["mono_mass"] > min_mass) & (df["mono_mass"] < max_mass)]
+        sub_df = df[(df["unimod_mass"] > min_mass) & (df["unimod_mass"] < max_mass)]
         PTM_names.update(list(sub_df["mod_name"]))
 
     return PTM_names

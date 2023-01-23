@@ -52,7 +52,6 @@ if __name__ == '__main__':
     #parser.add_argument('--processing_only', action=argparse.BooleanOptionalAction, help='whether to just do preprocessing of files', default=False)
     parser.add_argument('--num_models', type = int, help='number of splits/models to train', default = 1)
     parser.add_argument('--fragger', type = str, help = 'path to fragger.params from MSFragger', default = None)
-    parser.add_argument('--modification_tsv', type = str, help = 'path to modification_alphapeptdeep.tsv', default = None)
     parser.add_argument('--diff_nce', action=argparse.BooleanOptionalAction,
                         help = 'whether nce is different within each mass spec run')
     parser.add_argument('--downsize_unmodified_psms', type = float,
@@ -60,7 +59,7 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
 
-    if args.psm_type == "msfragger_pepxml" and args.fragger and args.modification_tsv:
+    if args.psm_type == "msfragger_pepxml" and args.fragger:
         print("Detecting Unimod PTMs from MSFragger search results")
         import alphabase
         from alphabase.yaml_utils import load_yaml, save_yaml
@@ -68,22 +67,31 @@ if __name__ == '__main__':
         import msfragger_ptms
 
         alphabase_path = os.path.dirname(alphabase.__file__)
-        psm_reader_yaml_path = os.path.join(alphabase_path, "io", "psm_reader", "psm_reader.yaml")
+
+        #make sure mods with modlosses get modloss importance changed to 1 so they can be predicted
+        modification_tsv = os.path.join(alphabase_path, "constants", "const_files", "modification.tsv")
+        mod_df = pd.read_csv(modification_tsv, sep = "\t")
+        mod_df["modloss_importance"] = mod_df.apply(
+            lambda x:max(1, x["modloss_importance"]) if x["unimod_modloss"] != 0 else 0, axis = 1)
+        mod_df.to_csv(modification_tsv, sep = "\t")
+
+        #save old psm reader yaml
+        psm_reader_yaml_path = os.path.join(alphabase_path, "constants", "const_files", "psm_reader.yaml")
 
         # dump this yaml to tmp yaml
-        if os.path.isfile(os.path.join(alphabase_path, "io", "psm_reader", "tmp_psm_reader.yaml")):
-            shutil.copy(os.path.join(alphabase_path, "io", "psm_reader", "tmp_psm_reader.yaml"),
-                        os.path.join(alphabase_path, "io", "psm_reader", "psm_reader.yaml"))
+        if os.path.isfile(os.path.join(alphabase_path, "constants", "const_files", "tmp_psm_reader.yaml")):
+            shutil.copy(os.path.join(alphabase_path, "constants", "const_files", "tmp_psm_reader.yaml"),
+                        os.path.join(alphabase_path, "constants", "const_files", "psm_reader.yaml"))
         else:
-            shutil.copy(os.path.join(alphabase_path, "io", "psm_reader", "psm_reader.yaml"),
-                        os.path.join(alphabase_path, "io", "psm_reader", "tmp_psm_reader.yaml"))
+            shutil.copy(os.path.join(alphabase_path, "constants", "const_files", "psm_reader.yaml"),
+                        os.path.join(alphabase_path, "constants", "const_files", "tmp_psm_reader.yaml"))
 
         # if there's any PTMs to add from fragger.params, add them here
         psm_reader_yaml = load_yaml(psm_reader_yaml_path)  # load yaml variable
 
         # read in fragger.params and process
         PTM_masses = msfragger_ptms.read_fragger_params(args.fragger)
-        PTM_names = msfragger_ptms.search_modification_tsv(args.modification_tsv, PTM_masses)
+        PTM_names = msfragger_ptms.search_modification_tsv(modification_tsv, PTM_masses)
         for name in PTM_names:
             psm_reader_yaml['msfragger_pepxml']['mass_mapped_mods'].append(name)
         save_yaml(psm_reader_yaml_path, psm_reader_yaml)

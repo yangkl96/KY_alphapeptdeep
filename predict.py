@@ -32,7 +32,7 @@ def getPredictionEntry(row):
         return (pred_entry)
 
     pred_entry = getHeader(row, pred_entry)
-    pred_entry = getMzsAndIntensities(row["frag_start_idx"], row["frag_end_idx"], pred_entry)
+    pred_entry = getMzsAndIntensities(row["frag_start_idx"], row["frag_stop_idx"], pred_entry)
     pred_entry += "END IONS\n"
     return (pred_entry)
 

@@ -312,7 +312,7 @@ class PepSpecMatch(object):
                 psm_df['rt_norm'] = psm_df.rt/ms2_reader.spectrum_df.rt.max()
 
         fragment_mz_df = self.get_fragment_mz_df(psm_df)
-        
+
         matched_intensity_df = pd.DataFrame(
             np.zeros_like(
                 fragment_mz_df.values, dtype=np.float64
@@ -326,12 +326,12 @@ class PepSpecMatch(object):
             ), 
             columns=fragment_mz_df.columns
         )
-        
+
         for (
             spec_idx, frag_start_idx, frag_end_idx
         ) in psm_df[[
             'spec_idx', 'frag_start_idx', 
-            'frag_end_idx'
+            'frag_stop_idx'
         ]].values:
             (
                 spec_mzs, spec_intens
@@ -346,7 +346,7 @@ class PepSpecMatch(object):
             frag_mzs = fragment_mz_df.values[
                 frag_start_idx:frag_end_idx,:
             ]
-            
+
             matched_idxes = match_centroid_mz(
                 spec_mzs, frag_mzs, mz_tols
             )

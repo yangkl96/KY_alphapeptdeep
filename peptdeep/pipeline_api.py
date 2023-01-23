@@ -15,9 +15,9 @@ from peptdeep.utils import (
     show_platform_info, show_python_info
 )
 from peptdeep.rescore.percolator import Percolator
-from peptdeep.spec_lib.library_factory import (
-    library_maker_provider
-)
+#from peptdeep.spec_lib.library_factory import (
+#    library_maker_provider
+#)
 
 from peptdeep.pretrained_models import ModelManager
 
@@ -138,10 +138,6 @@ def transfer_learn(settings_dict: dict = settings.global_settings, verbose=True)
             if 'psm_df' not in mgr_settings.keys() or \
                     settings_dict['model_mgr']['transfer']['psm_files'] != mgr_settings["check_files"]:
                 psm_df, frag_df = match_psms(settings_dict)
-                for col in frag_df.columns:
-                    print(col)
-                    print(max(frag_df[col]))
-                sys.exit(0)
                 mgr_settings['psm_df'] = psm_df
                 mgr_settings['frag_df'] = frag_df
                 mgr_settings["check_files"] = settings_dict['model_mgr']['transfer']['psm_files']
