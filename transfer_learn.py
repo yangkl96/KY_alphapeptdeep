@@ -9,23 +9,24 @@ if __name__ == '__main__':
     from xml.sax import saxutils
     import shutil
     from random import sample
-    from time import time
 
     parser = argparse.ArgumentParser(description='Training transfer model')
     parser.add_argument('psm_folder', type = str, help='folder for PSMs')
-    parser.add_argument('ms_folder', type = str, help='folder for mass spec output files')
+    parser.add_argument('ms_folder', type = str, help='folder for mass spec output files') #TODO: will not work for soft linked files?
     parser.add_argument('output_folder', type = str, help='folder for saving transfer model')
-    parser.add_argument('fragmentation', type = str, help='fragmentation method')
 
+    parser.add_argument('--fragmentation', type=str, help='fragmentation method', default = "hcd")
     parser.add_argument('--peptdeep_folder', type=str, help='folder for peptdeep', nargs='?', default=".")
     parser.add_argument('--psm_type', type = str, help='type of PSMs; default = msfragger_pepxml', nargs='?', default="msfragger_pepxml")
-    parser.add_argument('--ms_file_type', type = str, help='type of ms file; default = mgf', nargs='?', default="mgf")
+    parser.add_argument('--ms_file_type', type = str, help='type of ms file; default = mzml', nargs='?', default="mzml")
     parser.add_argument('--min_score', type = int, help='minimum Andromeda score', nargs='?', default=150)
-    parser.add_argument('--expect', type=float, help='expectation value for MSFragger pepxml filtering', nargs='?', default=0.0001)
+    parser.add_argument('--expect', type=float, help='expectation value for MSFragger pepxml filtering', nargs='?', default=0.00000001)
     parser.add_argument('--instrument', type = str, help='what mass spec; default: search in mzml file', nargs='?', default="TBD")
     parser.add_argument('--model_type', type = str, help='generic, phos, hla, or digly; default = generic',
                         nargs='?', default="generic") #default
     parser.add_argument('--external_ms2_model', type=str, help='path to external ms2 model', nargs='?', default = "")
+    parser.add_argument('--external_rt_model', type=str, help='path to external rt model', nargs='?', default="")
+    parser.add_argument('--external_ccs_model', type=str, help='path to external ccs model', nargs='?', default="")
     parser.add_argument('--no_train_rt_ccs', action=argparse.BooleanOptionalAction,
                         help='whether to train rt and ccs. Adding this flag will not train RT or CCS models')
     parser.add_argument('--no_train_ms2', action=argparse.BooleanOptionalAction,
@@ -52,6 +53,12 @@ if __name__ == '__main__':
     #parser.add_argument('--processing_only', action=argparse.BooleanOptionalAction, help='whether to just do preprocessing of files', default=False)
     parser.add_argument('--num_models', type = int, help='number of splits/models to train', default = 1)
     parser.add_argument('--fragger', type = str, help = 'path to fragger.params from MSFragger', default = None)
+    parser.add_argument('--additional_mods', type = str,
+                        help = 'path to additional PTMs to consider. Please format as a tsv with the following columns: '
+                               'mod_name	unimod_mass	unimod_avge_mass	'
+                               'composition	unimod_modloss	modloss_composition	'
+                               'classification	unimod_id	modloss_importance. '
+                               'Please refer to modification_alphapeptdeep.tsv for proper formatting.', default = None)
     parser.add_argument('--diff_nce', action=argparse.BooleanOptionalAction,
                         help = 'whether nce is different within each mass spec run')
     parser.add_argument('--downsize_unmodified_psms', type = float,
@@ -70,10 +77,26 @@ if __name__ == '__main__':
 
         #make sure mods with modlosses get modloss importance changed to 1 so they can be predicted
         modification_tsv = os.path.join(alphabase_path, "constants", "const_files", "modification.tsv")
+
+        #good to get a copy so that modifications.tsv is always preserved
+        if os.path.isfile(os.path.join(alphabase_path, "constants", "const_files", "tmp_modification.tsv")):
+            shutil.copy(os.path.join(alphabase_path, "constants", "const_files", "tmp_modification.tsv"),
+                        os.path.join(alphabase_path, "constants", "const_files", "modification.tsv"))
+        else:
+            shutil.copy(os.path.join(alphabase_path, "constants", "const_files", "modification.tsv"),
+                        os.path.join(alphabase_path, "constants", "const_files", "tmp_modification.tsv"))
+
         mod_df = pd.read_csv(modification_tsv, sep = "\t")
+
+        # add more modifications if necessary
+        if args.additional_mods:
+            add_df = pd.read_csv(args.additional_mods, sep="\t")
+            mod_df = pd.concat([mod_df, add_df], axis = 0)
+
+        #make sure modlosses are enabled
         mod_df["modloss_importance"] = mod_df.apply(
             lambda x:max(1, x["modloss_importance"]) if x["unimod_modloss"] != 0 else 0, axis = 1)
-        mod_df.to_csv(modification_tsv, sep = "\t")
+        mod_df.to_csv(modification_tsv, sep = "\t", index=False)
 
         #save old psm reader yaml
         psm_reader_yaml_path = os.path.join(alphabase_path, "constants", "const_files", "psm_reader.yaml")
@@ -96,8 +119,6 @@ if __name__ == '__main__':
             psm_reader_yaml['msfragger_pepxml']['mass_mapped_mods'].append(name)
         save_yaml(psm_reader_yaml_path, psm_reader_yaml)
 
-    if args.model_type == "phos":
-        args.mask_mods = False
     if args.settings_type == "TBD":
         args.settings_type = args.fragmentation
 
@@ -118,6 +139,8 @@ if __name__ == '__main__':
     mgr_settings["transfer"]["grid_nce_search"] = False
     mgr_settings["model_type"] = args.model_type
     mgr_settings["external_ms2_model"] = args.external_ms2_model
+    mgr_settings["external_rt_model"] = args.external_rt_model
+    mgr_settings["external_ccs_model"] = args.external_ccs_model
     if args.instrument.lower() not in ["lumos", "qe", "sciextof", "timstof", "tbd"]:
         print("Please set instrument to lumos, qe, sciextof, or timstof")
         sys.exit(0)
@@ -145,16 +168,21 @@ if __name__ == '__main__':
                 if args.ms_file_type == "thermo":
                     if file.endswith(".raw"):
                         all_ms_files.append(os.path.join(root, file))
+                        splitFile = file.split(".")
+                        splitFile = ".".join(splitFile[0: len(splitFile) - 1])
+                        rawToPath[splitFile] = root
                 elif args.ms_file_type == "mgf":
                     if file.endswith(".mgf"):
                         all_ms_files.append(os.path.join(root, file))
+                        splitFile = file.split(".")
+                        splitFile = ".".join(splitFile[0: len(splitFile) - 1])
+                        rawToPath[splitFile] = root
                 elif args.ms_file_type.lower() == "mzml":
                     if file.lower().endswith(".mzml"):
                         all_ms_files.append(os.path.join(root, file))
-
-                splitFile = file.split(".")
-                splitFile = ".".join(splitFile[0: len(splitFile) - 1])
-                rawToPath[splitFile] = root
+                        splitFile = file.split(".")
+                        splitFile = ".".join(splitFile[0: len(splitFile) - 1])
+                        rawToPath[splitFile] = root
 
     mgr_settings["transfer"]["ms_files"] = all_ms_files
     mgr_settings["transfer"]["ms_file_type"] = args.ms_file_type
@@ -205,7 +233,6 @@ if __name__ == '__main__':
                         if not args.skip_filtering:
                             #count how many times each modified peptide-charge combo appears,
                             #so as to only get unique ones for training
-                            #df = pepxml.filter_df(os.path.join(root, file), fdr=1, decoy_prefix="rev_", correction=1)
                             print("\tLoading " + os.path.join(root, file))
                             df = pepxml.DataFrame(os.path.join(root, file))
                             df.loc[:, "pep_charge"] = df["modified_peptide"] + df["assumed_charge"].astype(str)
@@ -293,7 +320,7 @@ if __name__ == '__main__':
 
                         #add to final psm list
                         #split PSMs into subgroups
-                        psms_list = []
+                        #psms_list = []
                         for i in range(args.num_models):
                             new_pepxml = os.path.join(root, file).replace("pepXML", str(i) + "filter.pepXML")
                             if not args.skip_filtering:
@@ -305,7 +332,7 @@ if __name__ == '__main__':
                                 else:
                                     psms.update(psm for psm, scan_num in zip(df['spectrum'], df['start_scan'])
                                                 if scan_num % args.num_models != i)
-                                psms_list.append(psms)
+                                #psms_list.append(psms)
 
                                 #write out pepxml
                                 with open(new_pepxml, 'w') as output_file:
