@@ -20,7 +20,7 @@ if __name__ == '__main__':
     parser.add_argument('--psm_type', type = str, help='type of PSMs; default = msfragger_pepxml', nargs='?', default="msfragger_pepxml")
     parser.add_argument('--ms_file_type', type = str, help='type of ms file; default = mzml', nargs='?', default="mzml")
     parser.add_argument('--min_score', type = int, help='minimum Andromeda score', nargs='?', default=150)
-    parser.add_argument('--expect', type=float, help='expectation value for MSFragger pepxml filtering', nargs='?', default=0.00000001)
+    parser.add_argument('--expect', type=float, help='expectation value for MSFragger pepxml filtering', nargs='?', default=0.0001)
     parser.add_argument('--instrument', type = str, help='what mass spec; default: search in mzml file', nargs='?', default="TBD")
     parser.add_argument('--model_type', type = str, help='generic, phos, hla, or digly; default = generic',
                         nargs='?', default="generic") #default
@@ -46,9 +46,9 @@ if __name__ == '__main__':
     parser.add_argument('--epoch_rt', help='number of epochs to train rt', default=20)
     parser.add_argument('--batch_size_ms2', help='batch size for ms2', default=512)
     parser.add_argument('--batch_size_rt', help='batch size for rt', default=512)
-    parser.add_argument('--lr', help='learning rate for both', default=0.0001)
-    parser.add_argument('--epoch', help='number of epochs to train both', default=20)
-    parser.add_argument('--batch_size', help='batch size for both', default=512)
+    parser.add_argument('--lr', help='learning rate for both', default="0.00001,0.0001,0.001") #consider jst using lr_rt and lr_ms2 instead
+    parser.add_argument('--epoch', help='number of epochs to train both', default="20,50")
+    parser.add_argument('--batch_size', help='batch size for both', default="512")
     parser.add_argument('--grid_search', action=argparse.BooleanOptionalAction, help='whether to grid search over parameters separated by commas', default=False)
     #parser.add_argument('--processing_only', action=argparse.BooleanOptionalAction, help='whether to just do preprocessing of files', default=False)
     parser.add_argument('--num_models', type = int, help='number of splits/models to train', default = 1)
@@ -162,6 +162,7 @@ if __name__ == '__main__':
     rawToPath = {}
     all_ms_files = []
     ms_folders = args.ms_folder.split(",")
+    mzml_suffix = ""
     for ms_f in ms_folders:
         for root, dirs, files in os.walk(ms_f):
             for file in files:
@@ -181,8 +182,19 @@ if __name__ == '__main__':
                     if file.lower().endswith(".mzml"):
                         all_ms_files.append(os.path.join(root, file))
                         splitFile = file.split(".")
+                        extension = splitFile[-1]
                         splitFile = ".".join(splitFile[0: len(splitFile) - 1])
                         rawToPath[splitFile] = root
+                        if ("_calibrated" in splitFile):
+                            base = splitFile.removesuffix("_calibrated")
+                            rawToPath[base] = root
+                            #all_ms_files.append(os.path.join(root, base  + "." + extension))
+                            mzml_suffix = "_calibrated"
+                        elif ("_uncalibrated" in splitFile):
+                            base = splitFile.removesuffix("_uncalibrated")
+                            rawToPath[base] = root
+                            #all_ms_files.append(os.path.join(root, base + "." + extension))
+                            mzml_suffix = "_uncalibrated"
 
     mgr_settings["transfer"]["ms_files"] = all_ms_files
     mgr_settings["transfer"]["ms_file_type"] = args.ms_file_type
@@ -248,17 +260,22 @@ if __name__ == '__main__':
                     if file.endswith("pepXML") and not file.endswith("filter.pepXML"):
                         # HOW TO DEAL WITH DIFFERENT FRAGMENTATIONS? DO NOT ALLOW AT FIRST, BUT HOW?
                         file_num += 1
-
+                        print("Adding nce and instrument information for " + file)
                         # get the PSMs below some expect
                         #df = pepxml.filter_df(os.path.join(root, file), fdr=1, decoy_prefix="rev_", correction=1)
                         df = dfs[file_num].copy()
                         if not args.skip_filtering:
                             df = df[df["expect"] < args.expect]
+                            if df.shape[0] == 0:
+                                print("0 PSMs, skipping to next file")
+                                continue
                             df.loc[:, "counter_id"] = df.apply(lambda x: x["modified_peptide"] +
                                                                   str(x["assumed_charge"]), axis = 1)
                             df.loc[:, "counts"] = df.apply(lambda x: peptide_counter[x["counter_id"]], axis = 1)
                             df = df[df["counts"] == 1]
-
+                            if df.shape[0] == 0:
+                                print("0 PSMs, skipping to next file")
+                                continue
                             if args.downsize_unmodified_psms < 1:
                                 unmod_idx = list(df[df["modifications"].str.len() == 0].index)
                                 unmod_idx = sample(unmod_idx, int((1 - args.downsize_unmodified_psms) * len(unmod_idx)))
@@ -271,8 +288,6 @@ if __name__ == '__main__':
 
                         scan_num_set = set(df["start_scan"].values)
 
-                        print("Adding nce and instrument information for " + file)
-
                         #check how many PSMs there are
                         if not args.skip_filtering:
                             print(str(df.shape[0]) + " PSMs")
@@ -282,7 +297,10 @@ if __name__ == '__main__':
 
                         #extracting info from mzml
                         base_name = file.replace(".pepXML", "")
-                        mzml_name = rawToPath[base_name] + "/" + base_name + ".mzML"
+                        if "_rank" in base_name:
+                            base_name_split = base_name.split("_")
+                            base_name = "_".join(base_name_split[0:-1])
+                        mzml_name = rawToPath[base_name] + "/" + base_name + mzml_suffix + ".mzML"
                         print("\tLoading " + mzml_name)
                         if args.diff_nce:
                             try:
@@ -312,6 +330,10 @@ if __name__ == '__main__':
                         # read in instruments
                         raw_name = mzml_name.replace(".mzml", "").replace(".mzML", "")
                         raw_name = raw_name.split("/")[-1].split("\"")[-1]
+                        if "_calibrated" in raw_name:
+                            raw_name = raw_name.removesuffix("_calibrated")
+                        if "_uncalibrated" in raw_name:
+                            raw_name = raw_name.removesuffix("_uncalibrated")
                         if args.instrument.lower() == "tbd":
                             instrument_dict[raw_name] = instrument_reader.read_instrument(mzml_name)
                         else:
@@ -324,17 +346,17 @@ if __name__ == '__main__':
                         for i in range(args.num_models):
                             new_pepxml = os.path.join(root, file).replace("pepXML", str(i) + "filter.pepXML")
                             if not args.skip_filtering:
-                                print("\tWriting new pepxml at " + new_pepxml)
-
                                 psms = set()  # for holding the best PSMs, those that will be used for transfer learning
                                 if args.num_models == 1:
                                     psms.update(psm for psm in df['spectrum'])
                                 else:
                                     psms.update(psm for psm, scan_num in zip(df['spectrum'], df['start_scan'])
                                                 if scan_num % args.num_models != i)
-                                #psms_list.append(psms)
+                                if len(psms) == 0:
+                                    continue
 
                                 #write out pepxml
+                                print("\tWriting new pepxml at " + new_pepxml)
                                 with open(new_pepxml, 'w') as output_file:
                                     unlocked = True
 
@@ -436,6 +458,10 @@ if __name__ == '__main__':
     mgr_settings["transfer"]["psm_type"] = args.psm_type
 
     #appropriately name the sub folders
+    from mpl_toolkits.mplot3d import Axes3D
+    import matplotlib.pyplot as plt
+    from pylab import *
+    import numpy as np
     for i in range(args.num_models):
         mgr_settings["transfer"]["psm_files"] = all_psm_files[i]
         if args.num_models == 1:
@@ -482,6 +508,7 @@ if __name__ == '__main__':
             best_val_rt = [sys.maxsize, ""]
             best_val_ms2 = [sys.maxsize, ""]
 
+            grid_search_dict = {}
             for lr in lr_list:
                 for epoch in epoch_list:
                     for batch_size in batch_size_list:
@@ -517,6 +544,7 @@ if __name__ == '__main__':
 
                         #be able to get an output from transfer_learn that maps model to best validation
                         for key, val in val_dict.items():
+                            grid_search_dict["_".join([key, str(np.log10(float(lr))), str(epoch), str(batch_size)])] = val
                             if key == "ccs":
                                 if val < best_val_ccs[0]:
                                     best_val_ccs[0] = val
@@ -532,15 +560,59 @@ if __name__ == '__main__':
 
             #copy best model to output folder
             target = args.output_folder + "_" + str(i)
+            with open(os.path.join(target, "log.txt"), "w") as f:
+                f.write("")
 
-            for origin, model_type in zip([best_val_ccs[1], best_val_rt[1], best_val_ms2[1]],
+            lr_list = [np.log10(float(lr)) for lr in lr_list]
+            epoch_list = [int(epoch) for epoch in epoch_list]
+            batch_size_list = [int(batch) for batch in batch_size_list]
+            for best_val, model_type in zip([best_val_ccs, best_val_rt, best_val_ms2],
                                           ["ccs", "rt", "ms2"]):
+                val = best_val[0]
+                origin = best_val[1]
                 if origin == "":
                     continue
+
+                print("Best " + model_type + " val: " + str(val) + " from " + origin)
+                with open(os.path.join(target, "log.txt"), "a") as f:
+                    f.write("Best " + model_type + " val: " + str(val) + " from " + origin + "\n")
                 files = os.listdir(origin)
                 for file_name in files:
                     if file_name.startswith(model_type):
                         shutil.copy(os.path.join(origin, file_name), os.path.join(target, file_name))
+
+                #create a heatmap of val loss across hyperparameters
+                data = []
+                colors = []
+                for lr in lr_list:
+                    for epoch in epoch_list:
+                        for batch_size in batch_size_list:
+                            data.append((lr, epoch, batch_size))
+                            colors.append(grid_search_dict["_".join([model_type, str(lr), str(epoch), str(batch_size)])])
+
+                fig = plt.figure()
+                ax = fig.add_subplot(111, projection='3d')
+                #color_map = cm.ScalarMappable(cmap=plt.get_cmap("cool_r"))
+                #color_map.set_array([])
+
+                img = ax.scatter([d[0] for d in data],
+                                 [d[1] for d in data],
+                                 [d[2] for d in data],
+                                 s=200, c = colors,
+                                 cmap = get_cmap("binary_r"), depthshade = False)
+                ax.set_xlabel('log(learning rate)')
+                ax.set_xticks(lr_list)
+                ax.set_ylabel('epochs')
+                ax.set_yticks(epoch_list)
+                ax.set_zlabel('batch size')
+                ax.set_zticks(batch_size_list)
+
+                #cbar = plt.colorbar(color_map)
+                #cbar.ax.set_ylabel('validation loss', rotation=270)
+                cbar = fig.colorbar(img, ax=ax)
+                cbar.set_label("validation loss")
+                fig.suptitle(model_type, fontsize=16)
+                plt.savefig(os.path.join(target, model_type + "_heatmap.pdf"), format = "pdf")
 
     if args.psm_type == "msfragger_pepxml":
         #copy tmp_psm_reader back to psm_reader

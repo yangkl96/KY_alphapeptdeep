@@ -146,6 +146,8 @@ class ModelInterface(object):
         )
 
         #split into train-val split
+        #TODO: make 80-20 split?
+        #TODO: be able to specify different weights for certain PTMs?
         train_df = precursor_df.sample(frac = 0.9)
         val_df = precursor_df.drop(train_df.index)
 

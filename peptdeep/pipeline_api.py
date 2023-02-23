@@ -81,7 +81,12 @@ def match_psms(settings_dict: dict = settings.global_settings):
             df_groupby_raw, df_groupby_raw.ngroups
     ):
         if raw_name not in ms2_file_dict:
-            continue
+            if raw_name + "_calibrated" not in ms2_file_dict:
+                if raw_name + "_uncalibrated" not in ms2_file_dict:
+                    continue
+                else: raw_name += "_uncalibrated"
+            else: raw_name += "_calibrated"
+
         (
             df, _, inten_df, _
         ) = match_one_raw(
